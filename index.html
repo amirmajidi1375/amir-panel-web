@@ -608,7 +608,7 @@ async function askMuse(){
 // ---------- Boot ----------
 async function bootWeb(){
   try {
-    const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
+    const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
     supabaseClient = mod.createClient(PANEL_CONFIG.supabaseUrl, PANEL_CONFIG.supabaseAnonKey);
     const sess = await supabaseClient.auth.getSession();
     supabaseSession = (sess.data && sess.data.session) || null;
