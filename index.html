@@ -96,6 +96,15 @@
 
   <div id="app" style="display:none">
     <section class="tab on" id="tab-dash">
+      <div class="card" id="passCard">
+        <b>تعیین رمز عبور پنل وب</b>
+        <p class="meta">با این رمز، بعداً از صفحهٔ ورود وارد می‌شوی. (ورود با دعوت‌نامه رمز ندارد؛ رمز را همین‌جا یک بار تعیین کن.)</p>
+        <div class="row">
+          <input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left;flex:1">
+          <button class="btn-teal" onclick="setPassword()">ذخیرهٔ رمز</button>
+        </div>
+        <span id="passMsg" class="meta"></span>
+      </div>
       <div class="kpis" id="kpis"></div>
       <div id="pendingBox"></div>
       <h2>برد امیر</h2><div id="boardAmir"></div>
@@ -629,13 +638,26 @@ async function login(){
     await refresh();
   } catch(e){ showErr(e.message); }
 }
-async function logout(){
+async function logout() {
   try { if (supabaseClient) await supabaseClient.auth.signOut(); } catch(e) {}
   supabaseSession = null;
   document.getElementById('app').style.display='none';
   document.getElementById('nav').style.display='none';
   document.getElementById('login').style.display='block';
 }
+async function setPassword(){
+  const pw = document.getElementById('newPass').value;
+  const msg = document.getElementById('passMsg');
+  if (!supabaseClient) { msg.textContent = 'در این نسخه رمز با تلگرام مدیریت می‌شود.'; return; }
+  if (!pw || pw.length < 6) { msg.textContent = 'رمز باید دست‌کم ۶ نویسه باشد.'; return; }
+  try {
+    const res = await supabaseClient.auth.updateUser({password: pw});
+    if (res.error) throw new Error(res.error.message);
+    msg.textContent = 'رمز ذخیره شد؛ از این به بعد با همین رمز وارد شو.';
+    document.getElementById('newPass').value = '';
+  } catch(e){ msg.textContent = 'خطا: ' + e.message; }
+}
+if (PANEL_BUILD !== 'web') { var pc = document.getElementById('passCard'); if (pc) pc.style.display='none'; }
 if (PANEL_BUILD === 'web') {
   syncThemeBtn();
   bootWeb();
