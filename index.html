@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>پنل مدیریت</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet">
 <script>(function(){try{var t=localStorage.getItem('panelTheme');document.documentElement.setAttribute('data-theme',(t==='dark')?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
@@ -861,6 +865,7 @@ if (PANEL_BUILD !== 'web') { var pc = document.getElementById('passCard'); if (p
 if (PANEL_BUILD === 'web') {
   syncThemeBtn();
   bootWeb();
+  if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch(e) {} }
 } else if (!tg || !tg.initData) {
   syncThemeBtn();
   document.getElementById('notg').style.display='block';
