@@ -8,6 +8,10 @@
 <meta name="theme-color" content="#1a1a2e">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="پنل">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet">
 <script>(function(){try{var t=localStorage.getItem('panelTheme');document.documentElement.setAttribute('data-theme',(t==='dark')?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
@@ -115,11 +119,12 @@
     <section class="tab on" id="tab-dash">
       <div class="card" id="passCard">
         <b>تعیین رمز عبور پنل وب</b>
-        <p class="meta">با این رمز، بعداً از صفحهٔ ورود وارد می‌شوی. (ورود با دعوت‌نامه رمز ندارد؛ رمز را همین‌جا یک بار تعیین کن.)</p>
+        <p class="meta">با این رمز، بعداً از صفحهٔ ورود وارد می‌شوی. (ورود با دعوت‌نامه رمز ندارد؛ رمز را همین‌جا یک بار تعیین کن. اگر قبلاً رمز گذاشته‌ای، رمزت را عوض نکن — دکمهٔ «قبلاً رمز گذاشتم» را بزن.)</p>
         <div class="row">
           <div class="pw-wrap" style="flex:1"><input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left"><button type="button" class="pw-toggle" aria-label="نمایش رمز" onclick="togglePw('newPass',this)">👁</button></div>
           <button class="btn-teal" onclick="setPassword()">ذخیرهٔ رمز</button>
         </div>
+        <div class="row"><button class="btn-ghost btn-sm" onclick="dismissPassCard()">قبلاً رمز گذاشتم، این کارت را ببند</button></div>
         <span id="passMsg" class="meta"></span>
       </div>
       <div class="card" id="passDone" style="display:none">✅ رمز پنل وب ذخیره شد؛ از این به بعد با همین رمز وارد شو.</div>
@@ -273,9 +278,22 @@ function syncPassCard(){
   if (PANEL_BUILD !== 'web') return;
   let done = false;
   try { done = localStorage.getItem('panelPassSet') === '1'; } catch(e) {}
+  // Account-level flag: set by dismissPassCard() / setPassword(), so the
+  // card does not come back on a new device or a new build. Supabase
+  // rejects re-saving the SAME password, so a user who already has a
+  // password must be able to dismiss without changing it.
+  try {
+    if (!done && supabaseSession && supabaseSession.user && supabaseSession.user.user_metadata
+      && supabaseSession.user.user_metadata.panelPassDismissed) done = true;
+  } catch(e) {}
   const card = document.getElementById('passCard'), note = document.getElementById('passDone');
   if (card) card.style.display = done ? 'none' : 'block';
   if (note) note.style.display = done ? 'block' : 'none';
+}
+async function dismissPassCard(){
+  try { localStorage.setItem('panelPassSet', '1'); } catch(e) {}
+  try { if (supabaseClient) await supabaseClient.auth.updateUser({data: {panelPassDismissed: true}}); } catch(e) {}
+  syncPassCard();
 }
 const PANEL_BUILD = 'web';
 const PANEL_CONFIG = {"supabaseUrl": "https://oueauxqkjuuukueeyxgr.supabase.co", "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91ZWF1eHFranV1dWt1ZWV5eGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxMDQ3ODIsImV4cCI6MjEwODY4MDc4Mn0.0P0fmVWdZKEWafE41G-7IqwAKlOJRPFFZ3NMN900Y9A", "edgeUrl": "https://oueauxqkjuuukueeyxgr.supabase.co/functions/v1/panel-api"};
@@ -854,7 +872,7 @@ async function setPassword(){
   if (!supabaseClient) { msg.textContent = 'در این نسخه رمز با تلگرام مدیریت می‌شود.'; return; }
   if (!pw || pw.length < 6) { msg.textContent = 'رمز باید دست‌کم ۶ نویسه باشد.'; return; }
   try {
-    const res = await supabaseClient.auth.updateUser({password: pw});
+    const res = await supabaseClient.auth.updateUser({password: pw, data: {panelPassDismissed: true}});
     if (res.error) throw new Error(res.error.message);
     try { localStorage.setItem('panelPassSet', '1'); } catch(e) {}
     document.getElementById('newPass').value = '';
