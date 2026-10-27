@@ -45,7 +45,7 @@
   .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; text-align:center; }
   .cal-grid div { padding:8px 0; border-radius:8px; font-size:.85rem; }
   .cal-grid .wd { color:var(--mut); font-size:.72rem; }
-  .cal-grid .today { background:var(--orange); color:#1a1200; font-weight:900; }
+  .cal-grid .today { border:3px solid var(--orange); border-radius:50%; font-weight:900; background:var(--tagbg); color:var(--txt); }
   .cal-grid .sel { outline:2px solid var(--teal); }
   .cal-grid .empty { visibility:hidden; }
   .center { text-align:center; padding:40px 16px; color:var(--mut); }
@@ -60,6 +60,19 @@
   /* Analytics: readable text (Amir: was tiny/unreadable) */
   .analytics-box svg text { fill:var(--mut); font-size:13px; font-weight:700; font-family:inherit; }
   .analytics-box .chart-note { font-size:.85rem; color:var(--mut); margin-top:6px; }
+  /* Password eye toggle (login + set-password) */
+  .pw-wrap { position:relative; }
+  .pw-wrap input { padding-right:46px; }
+  .pw-toggle { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:0; font-size:1.15rem; padding:6px; margin:0; }
+  /* Big task detail */
+  .task-detail { min-height:170px; }
+  .task-note { font-size:.85rem; background:var(--tagbg); border-radius:10px; padding:8px 10px; margin-top:8px; white-space:pre-wrap; }
+  /* Suggestions (proposals only, never auto-tasks) */
+  .sugg { border:1px dashed var(--line); }
+  .sugg-note { font-size:.78rem; color:var(--mut); }
+  /* Channels registry */
+  .chan-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+  .chan-row input { margin-bottom:0; }
 </style>
 </head>
 <body>
@@ -82,7 +95,7 @@
     <p style="font-size:1.2rem;color:var(--txt)">ورود به پنل مدیریت</p>
     <div class="card" style="max-width:420px;margin:0 auto;text-align:right">
       <input id="loginEmail" type="email" placeholder="ایمیل" dir="ltr" style="text-align:left">
-      <input id="loginPass" type="password" placeholder="رمز" dir="ltr" style="text-align:left">
+      <div class="pw-wrap"><input id="loginPass" type="password" placeholder="رمز" dir="ltr" style="text-align:left"><button type="button" class="pw-toggle" aria-label="نمایش رمز" onclick="togglePw('loginPass',this)">👁</button></div>
       <button class="btn-teal" style="width:100%" onclick="login()">ورود</button>
       <p class="meta" style="margin-top:8px">دسترسی فقط برای امیر و نگین است؛ کاربر تازه اول «در انتظار تأیید امیر» می‌ماند.</p>
     </div>
@@ -100,15 +113,17 @@
         <b>تعیین رمز عبور پنل وب</b>
         <p class="meta">با این رمز، بعداً از صفحهٔ ورود وارد می‌شوی. (ورود با دعوت‌نامه رمز ندارد؛ رمز را همین‌جا یک بار تعیین کن.)</p>
         <div class="row">
-          <input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left;flex:1">
+          <div class="pw-wrap" style="flex:1"><input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left"><button type="button" class="pw-toggle" aria-label="نمایش رمز" onclick="togglePw('newPass',this)">👁</button></div>
           <button class="btn-teal" onclick="setPassword()">ذخیرهٔ رمز</button>
         </div>
         <span id="passMsg" class="meta"></span>
       </div>
+      <div class="card" id="passDone" style="display:none">✅ رمز پنل وب ذخیره شد؛ از این به بعد با همین رمز وارد شو.</div>
       <div class="kpis" id="kpis"></div>
       <div id="pendingBox"></div>
       <h2>برد امیر</h2><div id="boardAmir"></div>
       <h2>برد نگین</h2><div id="boardNegin"></div>
+      <h2>پیشنهادهای بعدی</h2><div id="suggBox"></div>
     </section>
 
     <section class="tab" id="tab-cal">
@@ -121,6 +136,10 @@
         <div class="cal-grid" id="calGrid" style="margin-top:10px"></div>
       </div>
       <h2>کارها و گزارش‌های روز انتخاب‌شده</h2><div id="dayBox"></div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><b>برنامهٔ روز / هفته</b><span><button class="btn-ghost btn-sm" onclick="setAgenda('day')">امروز</button> <button class="btn-ghost btn-sm" onclick="setAgenda('week')">۷ روز آینده</button></span></div>
+        <div id="agendaBox" style="margin-top:8px"></div>
+      </div>
     </section>
 
     <section class="tab" id="tab-todos">
@@ -132,6 +151,7 @@
           <input type="hidden" id="todoDeadline">
           <button type="button" class="btn-ghost" style="margin-bottom:0;white-space:nowrap" onclick="openPicker('todoDeadline')">📅 تقویم</button>
         </div>
+        <textarea id="todoDetail" class="task-detail" placeholder="توضیح کامل کار (اختیاری)… دقیق بنویس چه چیزی می‌خواهی، برای کی، با چه جزئیاتی؛ این توضیح زیر همان کار نمایش داده می‌شود."></textarea>
         <p class="meta" style="margin-top:8px">فقط عنوان و مهلت را بنویس — دسته، مجری و اولویت را میوز موقع دسته‌بندی می‌چیند؛ کارهای بی‌دسته زیر «نامشخص» می‌مانند تا میوز بچیندشان.</p>
         <button class="btn-teal" style="margin-top:8px" onclick="addTodo()">＋ اضافه کردن کار</button>
       </div>
@@ -141,6 +161,7 @@
         <select id="fCat" onchange="renderTodos()"></select>
       </div>
       <div id="todoList"></div>
+      <h2>پیشنهادهای بعدی</h2><div id="suggBoxTodos"></div>
     </section>
 
     <section class="tab" id="tab-reports">
@@ -151,15 +172,16 @@
           <button type="button" class="btn-ghost" style="white-space:nowrap" onclick="openPicker('repDate')">📅 تقویم</button>
         </div>
         <select id="repCat"></select>
+        <select id="repTask"></select>
         <textarea id="repText" placeholder="گزارش امروز…"></textarea>
         <button class="btn-teal" onclick="addReport()">ثبت گزارش</button>
       </div>
-      <div id="repList"></div>
+      <h2>سابقهٔ گزارش‌ها</h2><div id="repList"></div>
     </section>
 
     <section class="tab" id="tab-pipe">
       <div class="card">
-        <p style="margin:0 0 10px"><b>خط لوله چیست؟</b> مسیر هر محتوا از ایده تا انتشار است: هر کارت یک محتواست که مرحله‌به‌مرحله جلو می‌رود تا در «انتشار» آمادهٔ پخش شود. روی هر کارت «مرحله بعد» بزن تا جلو برود.</p>
+        <p style="margin:0 0 10px"><b>خط لوله چیست؟</b><br>خط لوله یعنی مسیر هر محتوا از ایده تا انتشار.<br>هر کارت یک محتواست: اول ایده می‌شود، بعد سناریو، بعد ساخته می‌شود، بعد تدوین، بعد بازبینی، و آخر سر منتشر می‌شود.<br>با «مرحله بعد» کارت را یک قدم جلو ببر؛ با «مرحله قبل» برگردان.<br>عددهای بالا می‌گویند هر مرحله الان چند محتوا دارد.</p>
         <div id="stageCounts" class="row" style="margin-bottom:10px"></div>
         <div id="stageLegend"></div>
         <input id="pipeTitle" placeholder="عنوان محتوا…">
@@ -173,9 +195,17 @@
     </section>
 
     <section class="tab" id="tab-analytics">
+      <div class="card"><p class="meta" style="margin:0 0 8px">فیلتر دسته: نمودارها فقط همان دسته (همان موضوع با همهٔ کانال‌هایش) را نشان می‌دهند.</p><select id="analyticsCat" onchange="renderAnalytics()"></select></div>
       <h2>خط لوله بر اساس مرحله</h2><div class="card analytics-box" id="chartStage"></div>
       <h2>کارها بر اساس وضعیت</h2><div class="card analytics-box" id="chartTodos"></div>
+      <h2>کارها بر اساس دسته</h2><div class="card analytics-box" id="chartCats"></div>
       <h2>گزارش‌ها بر اساس دسته</h2><div class="card analytics-box" id="chartReports"></div>
+    </section>
+
+    <section class="tab" id="tab-channels">
+      <div class="card"><p style="margin:0">کانال‌های هر دسته با هندل و لینک. این فهرست دستی است و روی همین دستگاه ذخیره می‌شود؛ آمار زندهٔ پلتفرم‌ها (مثل بازدید اینستاگرام که فقط داخل اپ است) به‌صورت خودکار همگام نمی‌شود — تحلیل پنل از روی کارها، خط لوله و گزارش‌های ثبت‌شده محاسبه می‌شود.</p></div>
+      <div id="chanList"></div>
+      <button class="btn-ghost" onclick="resetChannels()">بازنشانی به فهرست پیش‌فرض</button>
     </section>
 
     <section class="tab" id="tab-muse">
@@ -201,6 +231,7 @@
   <button onclick="tab('reports',this)"><span>📝</span>گزارش‌ها</button>
   <button onclick="tab('pipe',this)"><span>🎬</span>خط لوله</button>
   <button onclick="tab('analytics',this)"><span>📈</span>تحلیل</button>
+  <button onclick="tab('channels',this)"><span>📡</span>کانال‌ها</button>
   <button onclick="tab('muse',this)"><span>💡</span>میوز</button>
 </nav>
 
@@ -227,6 +258,21 @@ function toggleTheme(){
 
 function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function showErr(m){ document.getElementById('errBox').innerHTML = '<div class="err">'+esc(m)+'</div>'; }
+function clearErr(){ document.getElementById('errBox').innerHTML = ''; }
+function togglePw(id, btn){
+  const el = document.getElementById(id); if (!el) return;
+  const show = el.type === 'password';
+  el.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+}
+function syncPassCard(){
+  if (PANEL_BUILD !== 'web') return;
+  let done = false;
+  try { done = localStorage.getItem('panelPassSet') === '1'; } catch(e) {}
+  const card = document.getElementById('passCard'), note = document.getElementById('passDone');
+  if (card) card.style.display = done ? 'none' : 'block';
+  if (note) note.style.display = done ? 'block' : 'none';
+}
 const PANEL_BUILD = 'web';
 const PANEL_CONFIG = {"supabaseUrl": "https://oueauxqkjuuukueeyxgr.supabase.co", "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im91ZWF1eHFranV1dWt1ZWV5eGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxMDQ3ODIsImV4cCI6MjEwODY4MDc4Mn0.0P0fmVWdZKEWafE41G-7IqwAKlOJRPFFZ3NMN900Y9A", "edgeUrl": "https://oueauxqkjuuukueeyxgr.supabase.co/functions/v1/panel-api"};
 let supabaseClient = null, supabaseSession = null;
@@ -279,6 +325,7 @@ async function refresh(){
       return;
     }
     S = res;
+    clearErr();
     document.getElementById('userChip').textContent = res.me.name || 'کاربر';
     if (PANEL_BUILD === 'web') document.getElementById('logoutBtn').style.display = 'inline-block';
     document.getElementById('pending').style.display='none';
@@ -300,6 +347,10 @@ function fillCats(){
   ['repCat','pipeCat'].forEach(id=>{ document.getElementById(id).innerHTML = opts; document.getElementById(id).value = 'نامشخص'; });
   document.getElementById('fCat').innerHTML = '<option value="all">همهٔ دسته‌ها</option>' + opts;
   document.getElementById('pipeStage').innerHTML = STAGES.map((s,i)=>'<option value="'+i+'">'+s+'</option>').join('');
+  const rt = document.getElementById('repTask');
+  if (rt) rt.innerHTML = '<option value="">بدون تسک (گزارش کلی)</option>' + S.todos.map(t=>'<option value="'+t.id+'">'+esc(t.title)+'</option>').join('');
+  const ac = document.getElementById('analyticsCat');
+  if (ac) { const prev = ac.value; ac.innerHTML = '<option value="all">همهٔ دسته‌ها</option>' + opts; if (prev) ac.value = prev; }
   const now = jalaliStr(new Date());
   document.getElementById('repDate').value = now;
   document.getElementById('repDateView').value = fmtStoredDate(now);
@@ -307,6 +358,7 @@ function fillCats(){
   document.getElementById('todoDeadlineView').value = '';
 }
 function tab(name, btn){
+  clearErr();
   document.querySelectorAll('section.tab').forEach(s=>s.classList.remove('on'));
   document.getElementById('tab-'+name).classList.add('on');
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
@@ -314,8 +366,9 @@ function tab(name, btn){
   if (name==='cal') renderCal();
   if (name==='analytics') renderAnalytics();
   if (name==='muse') renderMuse();
+  if (name==='channels') renderChannels();
 }
-function renderAll(){ renderDash(); renderTodos(); renderReports(); renderPipe(); renderCal(); renderAnalytics(); renderMuse(); }
+function renderAll(){ renderDash(); renderTodos(); renderReports(); renderPipe(); renderCal(); renderAnalytics(); renderMuse(); renderChannels(); renderSuggestions(); }
 
 // ---------- Jalali via Intl ----------
 // Stored dates stay numeric «YYYY/MM/DD» (stable for compare/sort); EVERY
@@ -431,6 +484,7 @@ function catLabel(c){ return c === 'نامشخص' ? 'نامشخص — در ان�
 
 // ---------- Dashboard ----------
 function renderDash(){
+  syncPassCard();
   const open = S.todos.filter(t=>t.status!=='done');
   document.getElementById('kpis').innerHTML =
     '<div class="kpi"><b>'+open.length+'</b><span>کار باز</span></div>' +
@@ -499,23 +553,69 @@ function renderCal(){
   document.getElementById('dayBox').innerHTML = '<div class="card"><b>روز '+fmtStoredDate(day)+'</b>' +
     '<div style="margin-top:8px"><b>کارها:</b> ' + (todos.length ? todos.map(t=>esc(t.title)+' ('+STATUS[t.status]+')').join('، ') : '—') + '</div>' +
     '<div style="margin-top:6px"><b>گزارش‌ها:</b> ' + (reps.length ? reps.map(r=>esc(r.text)).join('؛ ') : '—') + '</div></div>';
+  renderAgenda();
+}
+
+// ---------- Agenda: today / next 7 days ----------
+let agendaMode = 'day';
+function setAgenda(m){ agendaMode = m; renderAgenda(); }
+function jalaliToDate(js){
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (jalaliStr(today) === js) return today;
+  for (const dir of [1,-1]) {
+    const d = new Date(today);
+    for (let i=1;i<=800;i++){ d.setDate(d.getDate()+dir); if (jalaliStr(d) === js) return d; }
+  }
+  return null;
+}
+function renderAgenda(){
+  const box = document.getElementById('agendaBox'); if (!box || !S) return;
+  const day = selDay || jalaliStr(new Date());
+  let days = [day];
+  if (agendaMode === 'week') {
+    const base = jalaliToDate(day);
+    if (base) { days = []; for (let i=0;i<7;i++){ const d = new Date(base); d.setDate(d.getDate()+i); days.push(jalaliStr(d)); } }
+  }
+  const daySet = new Set(days);
+  const todos = S.todos.filter(t=>t.deadline && daySet.has(t.deadline));
+  const ready = S.pipeline.filter(p=>p.stage===5);
+  const review = S.pipeline.filter(p=>p.stage===4);
+  const title = agendaMode === 'week' ? '۷ روز آینده از ' + fmtStoredDate(day) : 'روز ' + fmtStoredDate(day);
+  let html = '<b>'+title+'</b>';
+  html += '<div style="margin-top:8px"><b>کارهای موعددار:</b> ' + (todos.length ? todos.map(t=>esc(t.title)+' ('+fmtStoredDate(t.deadline)+' · '+STATUS[t.status]+')').join('، ') : '—') + '</div>';
+  html += '<div style="margin-top:6px"><b>محتوای آمادهٔ انتشار:</b> ' + (ready.length ? ready.map(p=>esc(p.title)+' ('+esc(p.category)+')').join('، ') : '—') + '</div>';
+  html += '<div style="margin-top:6px"><b>در بازبینی (قدم بعد انتشار):</b> ' + (review.length ? review.map(p=>esc(p.title)+' ('+esc(p.category)+')').join('، ') : '—') + '</div>';
+  html += '<p class="meta" style="margin-top:8px">خط لوله تاریخ انتشار ندارد؛ موارد بالا بر اساس مرحلهٔ فعلی‌شان نشان داده می‌شوند، نه تاریخ.</p>';
+  box.innerHTML = html;
 }
 
 // ---------- Todos ----------
 // Entry is title + optional deadline ONLY. Category/assignee/priority are
 // NOT entered — the backend saves «نامشخص» and Muse categorizes later.
+function taskDetail(t){
+  const prefix = '📋 جزئیات تسک «' + t.title + '»:';
+  const n = (S.notes || []).find(x=>String(x.text||'').indexOf(prefix) === 0);
+  return n ? String(n.text).slice(prefix.length).trim() : '';
+}
 async function addTodo(){
   const title = document.getElementById('todoTitle').value.trim();
   if (!title) return showErr('عنوان کار را بنویسید');
-  try { await call('addTodo', { title, deadline:document.getElementById('todoDeadline').value.trim() }); document.getElementById('todoTitle').value=''; document.getElementById('todoDeadline').value=''; document.getElementById('todoDeadlineView').value=''; document.getElementById('catSuggest').textContent=''; await refresh(); } catch(e){ showErr(e.message); }
+  const detail = (document.getElementById('todoDetail').value || '').trim();
+  try {
+    await call('addTodo', { title, deadline:document.getElementById('todoDeadline').value.trim() });
+    if (detail) { try { await call('addNote', { text: '📋 جزئیات تسک «' + title + '»:\n' + detail }); } catch(e2) { /* detail is best-effort; the task itself is saved */ } }
+    document.getElementById('todoTitle').value=''; document.getElementById('todoDetail').value=''; document.getElementById('todoDeadline').value=''; document.getElementById('todoDeadlineView').value=''; document.getElementById('catSuggest').textContent=''; await refresh();
+  } catch(e){ showErr(e.message); }
 }
 function renderTodos(){
   if (!S) return;
   const fa = document.getElementById('fAssignee').value, fs = document.getElementById('fStatus').value, fc = document.getElementById('fCat').value;
   const list = S.todos.filter(t=>(fa==='all'||t.assignee===fa) && (fs==='all'||(fs==='done'?t.status==='done':t.status!=='done')) && (fc==='all'||t.category===fc));
   const itemHtml = t=>{
+    const det = taskDetail(t);
     return '<div class="card item"><div class="title">'+esc(t.title)+'</div>' +
       '<div class="meta">'+esc(catLabel(t.category))+' · '+ASSIGNEE[t.assignee]+' · اولویت '+PRI[t.priority]+(t.deadline?' · مهلت '+fmtStoredDate(t.deadline):'')+'</div>' +
+      (det ? '<div class="task-note">'+esc(det).replace(/\n/g,'<br>')+'</div>' : '') +
       '<div class="row" style="margin-top:8px"><span class="tag '+(t.status==='done'?'teal':'')+'">'+STATUS[t.status]+'</span>' +
       '<button class="btn-ghost btn-sm" onclick="updateTodo('+t.id+',\''+NEXT_STATUS[t.status]+'\')">'+NEXT_LABEL[t.status]+'</button>' +
       '<button class="btn-danger btn-sm" onclick="deleteTodo('+t.id+')">حذف</button></div></div>';
@@ -534,11 +634,18 @@ async function deleteTodo(id){ try { await call('deleteTodo', {id}); await refre
 async function addReport(){
   const text = document.getElementById('repText').value.trim();
   if (!text) return showErr('متن گزارش را بنویسید');
-  try { await call('addReport', { date:document.getElementById('repDate').value.trim(), category:document.getElementById('repCat').value, text }); document.getElementById('repText').value=''; await refresh(); } catch(e){ showErr(e.message); }
+  const taskId = document.getElementById('repTask').value;
+  let finalText = text;
+  if (taskId) { const t = S.todos.find(x=>String(x.id)===String(taskId)); if (t) finalText = 'مرتبط با تسک: ' + t.title + '\n' + text; }
+  try { await call('addReport', { date:document.getElementById('repDate').value.trim(), category:document.getElementById('repCat').value, text: finalText }); document.getElementById('repText').value=''; await refresh(); } catch(e){ showErr(e.message); }
 }
 function renderReports(){
   if (!S) return;
-  document.getElementById('repList').innerHTML = S.reports.length ? S.reports.map(r=>'<div class="card item"><div class="meta">'+fmtStoredDate(r.date)+(r.category?' · '+esc(r.category):'')+'</div><div style="margin-top:4px">'+esc(r.text)+'</div></div>').join('') : '<div class="meta">هنوز گزارشی ثبت نشده.</div>';
+  document.getElementById('repList').innerHTML = S.reports.length ? S.reports.map(r=>{
+    let tag = '', body = String(r.text || '');
+    if (body.indexOf('مرتبط با تسک: ') === 0) { const nl = body.indexOf('\n'); if (nl > 0) { tag = body.slice(0, nl); body = body.slice(nl+1); } else { tag = body; body = ''; } }
+    return '<div class="card item"><div class="meta">'+fmtStoredDate(r.date)+(r.category?' · '+esc(r.category):'')+'</div>' + (tag ? '<div style="margin-top:4px"><span class="tag teal">'+esc(tag)+'</span></div>' : '') + '<div style="margin-top:4px;white-space:pre-wrap">'+esc(body)+'</div></div>';
+  }).join('') : '<div class="meta">هنوز گزارشی ثبت نشده.</div>';
 }
 
 // ---------- Pipeline ----------
@@ -569,9 +676,13 @@ async function deletePipe(id){ try { await call('deletePipeline', {id}); await r
 
 // ---------- Analytics ----------
 function barChart(labels, values, color){
+  const total = values.reduce((a,b)=>a+b, 0);
+  if (!labels.length || total === 0) return '<div class="meta" style="padding:20px 0;text-align:center">هنوز داده‌ای نیست.</div>';
   const max = Math.max(1, ...values);
-  let bars = '', x = 10;
+  let bars = '';
   const bw = Math.min(60, (680 - 20) / labels.length - 10);
+  const totalW = labels.length * (bw + 10) - 10;
+  let x = (700 - totalW) / 2;
   labels.forEach((l, i)=>{
     const h = Math.round(values[i]/max*120);
     bars += '<rect x="'+x+'" y="'+(140-h)+'" width="'+bw+'" height="'+h+'" rx="6" fill="'+color+'"/><text x="'+(x+bw/2)+'" y="'+(140-h-6)+'" text-anchor="middle" font-size="13">'+toFaDigits(values[i])+'</text><text x="'+(x+bw/2)+'" y="158" text-anchor="middle" font-size="13">'+esc(l)+'</text>';
@@ -581,9 +692,95 @@ function barChart(labels, values, color){
 }
 function renderAnalytics(){
   if (!S) return;
-  document.getElementById('chartStage').innerHTML = barChart(STAGES, STAGES.map((_,i)=>S.pipeline.filter(p=>p.stage===i).length), '#2dd4bf');
-  document.getElementById('chartTodos').innerHTML = barChart(['در صف','در حال انجام','انجام‌شده'], ['queued','in_progress','done'].map(s=>S.todos.filter(t=>t.status===s).length), '#f59e0b');
-  document.getElementById('chartReports').innerHTML = barChart(S.categories, S.categories.map(c=>S.reports.filter(r=>r.category===c).length), '#2dd4bf');
+  const f = (document.getElementById('analyticsCat') || {}).value || 'all';
+  const pipe = f === 'all' ? S.pipeline : S.pipeline.filter(p=>p.category===f);
+  const todos = f === 'all' ? S.todos : S.todos.filter(t=>t.category===f);
+  const reps = f === 'all' ? S.reports : S.reports.filter(r=>r.category===f);
+  document.getElementById('chartStage').innerHTML = barChart(STAGES, STAGES.map((_,i)=>pipe.filter(p=>p.stage===i).length), '#2dd4bf');
+  document.getElementById('chartTodos').innerHTML = barChart(['در صف','در حال انجام','انجام‌شده'], ['queued','in_progress','done'].map(s=>todos.filter(t=>t.status===s).length), '#f59e0b');
+  document.getElementById('chartCats').innerHTML = barChart(S.categories, S.categories.map(c=>todos.filter(t=>t.category===c).length), '#8b5cf6');
+  document.getElementById('chartReports').innerHTML = barChart(S.categories, S.categories.map(c=>reps.filter(r=>r.category===c).length), '#2dd4bf');
+}
+
+// ---------- Suggested next steps (proposals ONLY — never auto-tasks) ----------
+const SUGGESTIONS = [
+  { id:'name-pages', title:'نام‌گذاری ۳ پیج باقی‌مانده: روانشناسی، شاهنامه و همکار', note:'شده دیگه و FanCATstic Four تایید شده‌اند؛ این سه هنوز اسم نهایی ندارند. (پیشنهاد است؛ می‌توانی ردش کنی.)' },
+  { id:'tiktok', title:'تکمیل اکانت‌های تیک‌تاک هر ۵ دسته', note:'۴ اکانت جدید + بررسی تغییر برند اکانت قدیمی. (پیشنهاد است؛ می‌توانی ردش کنی.)' },
+  { id:'panel-token', title:'ست کردن توکن بات پنل در سوپابیس (TELEGRAM_BOT_TOKEN)', note:'با این کار درِ تلگرام و درِ وب روی یک دیتابیس می‌روند و سینک می‌شوند. (پیشنهاد است؛ می‌توانی ردش کنی.)' },
+  { id:'group-reports', title:'ارسال گزارش شبکه‌ها به ۵ گروه', note:'اینستاگرام، آپارات و یوتیوب هر ۵ دسته آماده‌اند؛ گزارش نهایی برای هر گروه. (پیشنهاد است؛ می‌توانی ردش کنی.)' },
+  { id:'canva-rest', title:'ادامهٔ بازطراحی تمپلیت‌های کنوا: روانشناسی (۴) و شاهنامه (۸)', note:'با همان فونت فعلی ادامه داده می‌شود. (پیشنهاد است؛ می‌توانی ردش کنی.)' },
+];
+function dismissedSuggs(){ try { return JSON.parse(localStorage.getItem('panelDismissedSuggestions') || '[]'); } catch(e){ return []; } }
+function dismissSugg(id){ const d = dismissedSuggs(); if (!d.includes(id)) d.push(id); try { localStorage.setItem('panelDismissedSuggestions', JSON.stringify(d)); } catch(e) {} renderSuggestions(); }
+async function acceptSugg(id){
+  const s = SUGGESTIONS.find(x=>x.id===id); if (!s) return;
+  try { await call('addTodo', { title: s.title, deadline: '' }); dismissSugg(id); await refresh(); } catch(e){ showErr(e.message); }
+}
+function renderSuggestions(){
+  const dis = dismissedSuggs();
+  const open = SUGGESTIONS.filter(s=>!dis.includes(s.id));
+  const html = open.length ? open.map(s=>'<div class="card sugg"><div class="title">'+esc(s.title)+'</div><div class="sugg-note" style="margin-top:4px">'+esc(s.note)+'</div><div class="row" style="margin-top:8px"><button class="btn-teal btn-sm" onclick="acceptSugg(\''+s.id+'\')">＋ اضافه به کارها</button><button class="btn-ghost btn-sm" onclick="dismissSugg(\''+s.id+'\')">رد کردن</button></div></div>').join('') : '<div class="meta">پیشنهادی باز نیست. (پیشنهادهای ردشده فقط روی همین دستگاه پنهان می‌شوند.)</div>';
+  ['suggBox','suggBoxTodos'].forEach(id=>{ const el = document.getElementById(id); if (el) el.innerHTML = html; });
+}
+
+// ---------- Channels registry (manual, localStorage; NOT live stats) ----------
+const CHANNEL_CATS = ['روانشناسی','شاهنامه','شده دیگه','گربه‌ها','همکار'];
+const CHANNEL_SEED = {
+  'روانشناسی': [
+    { net:'اینستاگرام', handle:'amirdecodes', url:'https://www.instagram.com/amirdecodes/', status:'فعال' },
+    { net:'یوتیوب', handle:'@AmirDecodes', url:'https://www.youtube.com/@AmirDecodes', status:'فعال' },
+    { net:'آپارات', handle:'amirdecodes', url:'https://www.aparat.com/amirdecodes', status:'فعال' },
+    { net:'تیک‌تاک', handle:'amirho3einmj', url:'https://www.tiktok.com/@amirho3einmj', status:'در حال تغییر برند به amirdecodes' },
+  ],
+  'شاهنامه': [
+    { net:'اینستاگرام', handle:'shahnameh.tales', url:'https://www.instagram.com/shahnameh.tales/', status:'موقت' },
+    { net:'یوتیوب', handle:'@asatireiran', url:'https://www.youtube.com/@asatireiran', status:'موقت' },
+    { net:'آپارات', handle:'u_44295339', url:'https://www.aparat.com/u_44295339', status:'موقت' },
+    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+  ],
+  'شده دیگه': [
+    { net:'اینستاگرام', handle:'shode.dige', url:'https://www.instagram.com/shode.dige/', status:'فعال' },
+    { net:'یوتیوب', handle:'@shodedige', url:'https://www.youtube.com/@shodedige', status:'فعال' },
+    { net:'آپارات', handle:'u_44289335', url:'https://www.aparat.com/u_44289335', status:'موقت' },
+    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+  ],
+  'گربه‌ها': [
+    { net:'اینستاگرام', handle:'fancatstic.four', url:'https://www.instagram.com/fancatstic.four/', status:'فعال' },
+    { net:'یوتیوب', handle:'@fancatsticfour', url:'https://www.youtube.com/@fancatsticfour', status:'فعال' },
+    { net:'آپارات', handle:'u_44289730', url:'https://www.aparat.com/u_44289730', status:'موقت' },
+    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+  ],
+  'همکار': [
+    { net:'اینستاگرام', handle:'hamkargram', url:'https://www.instagram.com/hamkargram/', status:'فعال' },
+    { net:'یوتیوب', handle:'@hamkargram', url:'https://www.youtube.com/@hamkargram', status:'فعال' },
+    { net:'آپارات', handle:'u_44289977', url:'https://www.aparat.com/u_44289977', status:'موقت' },
+    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+  ],
+};
+function loadChannels(){
+  try { const raw = localStorage.getItem('panelChannelsV1'); if (raw) { const p = JSON.parse(raw); if (p && typeof p === 'object') return p; } } catch(e) {}
+  return JSON.parse(JSON.stringify(CHANNEL_SEED));
+}
+function saveChannels(data){ try { localStorage.setItem('panelChannelsV1', JSON.stringify(data)); } catch(e) {} }
+function chanInput(cat, idx, val){
+  const data = loadChannels();
+  const ch = data[cat] && data[cat][idx]; if (!ch) return;
+  ch.handle = val;
+  const pats = { 'اینستاگرام': h=>'https://www.instagram.com/'+h+'/', 'یوتیوب': h=>'https://www.youtube.com/'+(h.charAt(0)==='@'?h:'@'+h), 'آپارات': h=>'https://www.aparat.com/'+h, 'تیک‌تاک': h=>'https://www.tiktok.com/'+(h.charAt(0)==='@'?h:'@'+h) };
+  ch.url = val ? pats[ch.net](val) : '';
+  saveChannels(data);
+}
+function resetChannels(){ try { localStorage.removeItem('panelChannelsV1'); } catch(e) {} renderChannels(); }
+function renderChannels(){
+  const el = document.getElementById('chanList'); if (!el) return;
+  const data = loadChannels();
+  el.innerHTML = CHANNEL_CATS.map(cat=>{
+    const rows = (data[cat] || []).map((ch, i)=>{
+      const link = ch.url ? '<a href="'+esc(ch.url)+'" target="_blank" rel="noopener">'+esc(ch.url)+'</a>' : '<span class="meta">بدون لینک</span>';
+      return '<div class="chan-row"><b style="min-width:86px">'+esc(ch.net)+'</b><input value="'+esc(ch.handle)+'" placeholder="هندل…" onchange="chanInput(\''+cat+'\','+i+',this.value)" style="flex:1"><span class="tag">'+esc(ch.status)+'</span></div><div style="margin-bottom:10px">'+link+'</div>';
+    }).join('');
+    return '<div class="card"><b>'+esc(cat)+'</b><div style="margin-top:10px">'+rows+'</div></div>';
+  }).join('');
 }
 
 // ---------- Muse corner ----------
@@ -635,12 +832,14 @@ async function login(){
     if (res.error) throw new Error(res.error.message);
     supabaseSession = res.data.session;
     document.getElementById('login').style.display='none';
+    clearErr();
     await refresh();
   } catch(e){ showErr(e.message); }
 }
 async function logout() {
   try { if (supabaseClient) await supabaseClient.auth.signOut(); } catch(e) {}
   supabaseSession = null;
+  clearErr();
   document.getElementById('app').style.display='none';
   document.getElementById('nav').style.display='none';
   document.getElementById('login').style.display='block';
@@ -653,8 +852,9 @@ async function setPassword(){
   try {
     const res = await supabaseClient.auth.updateUser({password: pw});
     if (res.error) throw new Error(res.error.message);
-    msg.textContent = 'رمز ذخیره شد؛ از این به بعد با همین رمز وارد شو.';
+    try { localStorage.setItem('panelPassSet', '1'); } catch(e) {}
     document.getElementById('newPass').value = '';
+    syncPassCard();
   } catch(e){ msg.textContent = 'خطا: ' + e.message; }
 }
 if (PANEL_BUILD !== 'web') { var pc = document.getElementById('passCard'); if (pc) pc.style.display='none'; }
