@@ -30,14 +30,15 @@
   .chip { background:var(--teal); color:#06251f; font-weight:700; font-size:.8rem; padding:4px 10px; border-radius:999px; }
   main { padding:16px; max-width:720px; margin:0 auto; }
   section.screen { display:none; } section.screen.on { display:block; }
-  h2 { font-size:1rem; margin:20px 0 10px; }
+  h2 { font-size:1rem; margin:16px 0 8px; }
   h2:first-child { margin-top:0; }
-  .card { background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px; box-shadow:var(--shadow); }
+  .card { background:var(--card); border-radius:16px; padding:14px; margin-bottom:12px; box-shadow:var(--shadow); overflow:hidden; }
   .kpis { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
   .kpi { background:var(--card); border-radius:14px; padding:14px 8px; text-align:center; box-shadow:var(--shadow); }
   .kpi b { display:block; font-size:1.4rem; color:var(--orange); }
   .kpi span { font-size:.78rem; color:var(--mut); }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .row > * { min-width:0; }
   .meta { font-size:.8rem; color:var(--mut); line-height:1.7; }
   input, select, textarea { width:100%; background:var(--inputbg); color:var(--txt); border:1px solid var(--line); border-radius:12px; padding:12px; font-family:inherit; font-size:.95rem; margin-bottom:8px; min-height:48px; }
   textarea { min-height:72px; resize:vertical; }
@@ -57,15 +58,33 @@
   .item { border-bottom:1px solid var(--line); padding:12px 0; } .item:last-child { border-bottom:0; }
   .item .title { font-weight:700; line-height:1.7; }
   .task-card { cursor:pointer; }
-  .task-card .title { font-size:1rem; }
-  .steps-bar { height:6px; background:var(--tagbg); border-radius:999px; margin-top:8px; overflow:hidden; }
+  .task-card .title { font-size:1rem; min-width:0; overflow-wrap:anywhere; }
+  .tag.who { font-weight:700; }
+  .tag.st-que { background:var(--tagbg); }
+  .tag.st-prog { background:#fef3c7; color:#92400e; font-weight:700; }
+  .tag.st-done { background:var(--tagteal); color:var(--teal); font-weight:700; }
+  .track { display:flex; gap:4px; margin-top:10px; }
+  .track i { flex:1; height:6px; border-radius:999px; background:var(--tagbg); }
+  .track i.on { background:var(--teal); }
+  .tick { width:30px; height:30px; min-height:0; padding:0; flex:none; border-radius:50%; border:2px solid var(--line); background:transparent; color:transparent; font-size:1rem; line-height:1; }
+  .tick.on { background:var(--teal); border-color:var(--teal); color:#06251f; }
+  .task-card.is-done .title { text-decoration:line-through; opacity:.55; }
+  .sub-list { margin-top:10px; border-top:1px dashed var(--line); padding-top:10px; }
+  .sub-step { display:flex; gap:8px; align-items:flex-start; margin-bottom:10px; }
+  .sub-step input[type="checkbox"] { width:22px; height:22px; min-height:0; flex:none; accent-color:var(--teal); margin-top:2px; }
+  .sub-title { line-height:1.7; overflow-wrap:anywhere; }
+  .sub-step.done .sub-title { text-decoration:line-through; opacity:.55; }
+  .sub-note { font-size:.8rem; color:var(--mut); line-height:1.7; }
+  .guide-list { margin:8px 0 0; padding-inline-start:20px; line-height:1.8; }
+  .guide-list li { margin-bottom:4px; }
+  .steps-bar { height:8px; background:var(--tagbg); border-radius:999px; margin-top:8px; overflow:hidden; }
   .steps-bar i { display:block; height:100%; background:var(--teal); border-radius:999px; }
   .avatar { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:var(--tagbg); font-weight:900; font-size:.85rem; flex:none; }
   .avatar.both { background:var(--tagteal); }
   .filter-chip { background:var(--ghost); color:var(--ghostxt); border-radius:999px; padding:8px 14px; font-size:.85rem; min-height:40px; }
   .filter-chip.on { background:var(--teal); color:#06251f; }
-  .seg { display:flex; gap:6px; }
-  .seg button { flex:1; background:var(--ghost); color:var(--ghostxt); padding:10px 6px; font-size:.85rem; }
+  .seg { display:flex; gap:4px; background:var(--ghost); padding:4px; border-radius:999px; }
+  .seg button { flex:1; background:transparent; color:var(--ghostxt); padding:10px 6px; font-size:.85rem; }
   .seg button.on { background:var(--teal); color:#06251f; }
   nav { position:fixed; bottom:0; right:0; left:0; z-index:5; background:var(--head); border-top:1px solid var(--line); display:flex; padding:6px 4px calc(6px + env(safe-area-inset-bottom)); }
   nav button { flex:1; background:none; color:var(--mut); font-size:.72rem; padding:8px 2px; min-height:52px; }
@@ -92,7 +111,7 @@
   .pw-wrap { position:relative; }
   .pw-wrap input { padding-right:46px; }
   .pw-toggle { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:0; font-size:1.15rem; padding:6px; margin:0; min-height:0; }
-  .task-note { font-size:.88rem; background:var(--tagbg); border-radius:10px; padding:10px; margin-top:8px; white-space:pre-wrap; line-height:1.7; }
+  .task-note { font-size:.88rem; background:var(--tagbg); border-radius:10px; padding:10px; margin-top:8px; white-space:pre-wrap; line-height:1.7; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
   .sugg { border:1px dashed var(--line); }
   .sugg-note { font-size:.8rem; color:var(--mut); line-height:1.7; }
   .chan-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
@@ -104,6 +123,9 @@
   .step-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
   .step-row input[type="text"] { margin-bottom:0; flex:1; }
   .step-row input[type="checkbox"] { width:22px; height:22px; min-height:0; flex:none; accent-color:var(--teal); }
+  #userChip { max-width:38vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #todoDetail { min-height:56px; }
+  @media (max-width:480px){ header { padding:10px 12px; } header h1 { font-size:1rem; } }
   .more-item { width:100%; text-align:right; background:var(--card); color:var(--txt); border-bottom:1px solid var(--line); border-radius:0; padding:16px 4px; font-size:1rem; display:flex; justify-content:space-between; align-items:center; }
   .more-item:last-child { border-bottom:0; }
 </style>
@@ -176,7 +198,6 @@
           <button type="button" class="btn-ghost" style="margin-bottom:0;white-space:nowrap" onclick="openPicker('todoDeadline')">📅 تقویم</button>
         </div>
         <textarea id="todoDetail" class="task-detail" placeholder="توضیح کامل کار (اختیاری)… دقیق بنویس چه چیزی می‌خواهی، برای کی، با چه جزئیاتی؛ این توضیح زیر همان کار نمایش داده می‌شود."></textarea>
-        <p class="meta">فقط عنوان و مهلت را بنویس — دسته، مجری و اولویت موقع دسته‌بندی چیده می‌شوند؛ کارهای بی‌دسته زیر «نامشخص» می‌مانند.</p>
         <button class="btn-teal" style="margin-top:8px" onclick="addTodo()">＋ اضافه کردن کار</button>
       </div>
       <div class="seg" style="margin-bottom:12px">
@@ -185,7 +206,6 @@
         <button id="tv-mine" onclick="setTaskView('mine')">کارهای من</button>
       </div>
       <div class="row" id="taskChips" style="margin-bottom:12px"></div>
-      <div class="row" style="margin-bottom:12px"><button class="btn-ghost btn-sm" onclick="openFilterSheet()">⚙️ فیلترها</button><span class="meta" id="filterNote"></span></div>
       <div id="todoList"></div>
     </section>
 
@@ -433,7 +453,16 @@ async function refresh(){
 }
 
 // ---------- Navigation: 5 bottom tabs + More sheet ----------
-function showScreen(name, btn){
+// History-based in-app navigation: every tab switch pushes a history
+// entry and every bottom sheet pushes one, so the system back button
+// walks back through in-app views instead of leaving the app. Back at
+// the root view (no app history left) exits normally — standard
+// behavior. All history calls are guarded: in environments where
+// pushState throws (e.g. some webviews), navigation still works, just
+// without the back-stack.
+function histPush(st){ try { history.pushState(st, ''); } catch(e){} }
+function histReplace(st){ try { history.replaceState(st, ''); } catch(e){} }
+function showScreen(name, btn, push){
   clearErr(); closeSheet();
   currentScreen = name;
   document.querySelectorAll('section.screen').forEach(s=>s.classList.remove('on'));
@@ -455,6 +484,12 @@ function showScreen(name, btn){
   if (name==='reports') renderReports();
   if (name==='home') renderDash();
   updateFab();
+  if (push !== false) {
+    // One entry per user navigation; re-rendering the same screen
+    // (e.g. after a sheet closes) must not duplicate the entry.
+    let st = null; try { st = history.state; } catch(e){}
+    if (!st || st.panel !== 'screen' || st.screen !== name) histPush({panel:'screen', screen:name});
+  }
   window.scrollTo(0, 0);
 }
 function tab(name, btn){ showScreen(name, btn); } // old name kept for safety
@@ -470,10 +505,34 @@ function updateFab(){
   // One contextual FAB per screen; no FAB where there is no primary create action.
   fab.style.display = (currentScreen === 'analytics' || currentScreen === 'channels') ? 'none' : 'block';
 }
+let sheetOpen = false;
 function openSheet(html){
+  // One history entry per sheet opening; re-rendering the same open
+  // sheet (e.g. after a date pick) must not stack entries.
+  if (!sheetOpen) { sheetOpen = true; histPush({panel:'sheet'}); }
   document.getElementById('sheetRoot').innerHTML = '<div class="sheet-backdrop" onclick="if(event.target===this)closeSheet()"><div class="sheet-box"><div class="sheet-handle"></div>' + html + '</div></div>';
 }
-function closeSheet(){ document.getElementById('sheetRoot').innerHTML = ''; }
+function closeSheet(){
+  const wasOpen = sheetOpen; sheetOpen = false;
+  document.getElementById('sheetRoot').innerHTML = '';
+  // A sheet closed by its own button (not by back) leaves its history
+  // entry behind; convert that entry into the underlying screen entry
+  // so a later back press lands on the right screen, not a dead sheet.
+  if (wasOpen) {
+    let st = null; try { st = history.state; } catch(e){}
+    if (st && st.panel === 'sheet') histReplace({panel:'screen', screen: currentScreen});
+  }
+}
+// Back button: close any picker first, then any sheet, then return to
+// the previous in-app screen. A null state means the bottom of the app
+// stack: overlays close and the next back press exits normally.
+window.addEventListener('popstate', function(ev){
+  const st = ev.state;
+  closePicker(true);
+  closeSheet();
+  if (st && st.panel === 'screen' && st.screen) showScreen(st.screen, null, false);
+});
+try { if (history.state == null) histReplace({panel:'screen', screen: currentScreen}); } catch(e){}
 function openMoreSheet(btn){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   if (btn) btn.classList.add('on');
@@ -617,10 +676,12 @@ function pickDay(js){
   if (TS && st.hiddenId === 'sheetDeadline') { TS.deadline = js; }
   closePicker();
 }
-function closePicker(){
+function closePicker(fromBack){
   document.getElementById('pickerRoot').innerHTML = ''; pickerState = null;
   ['sheetDeadline','sheetDeadlineView'].forEach(id=>{ const old = document.getElementById(id); if (old) old.remove(); });
-  if (pickerReturnSheet && TS) { pickerReturnSheet = false; renderTaskSheet(); }
+  // When back closed the picker, the task sheet underneath is gone too
+  // (back already popped past it) — never re-render it in that case.
+  if (pickerReturnSheet && TS && !fromBack) { pickerReturnSheet = false; renderTaskSheet(); }
   else pickerReturnSheet = false;
 }
 
@@ -666,6 +727,106 @@ function stepsProgress(taskId){
   const steps = stepsFor(taskId);
   if (!steps.length) return null;
   return { done: steps.filter(s=>s.done).length, total: steps.length };
+}
+
+// ---------- Self-first ordering ----------
+// The panel has exactly two approved users (Amir + Negin), so a session
+// user who is not Amir is Negin. If there is no session user at all,
+// sorting stays untouched (current order is kept).
+function mePersonOrNull(){
+  if (!S || !S.me) return null;
+  if (S.me.tgId === 94731359 || S.me.email === 'amirmajidi1375@gmail.com') return 'amir';
+  return 'negin';
+}
+function selfRank(t, me){
+  if (!me) return 0;
+  if (t.assignee === me) return 0;
+  if (t.assignee === 'both') return 1;
+  return 2;
+}
+function sortSelfFirst(list){
+  const me = mePersonOrNull();
+  if (!me) return list;
+  return list.slice().sort((a, b)=>selfRank(a, me) - selfRank(b, me));
+}
+
+// ---------- Sub-task expansion + per-step notes ----------
+// Expanded cards are remembered in memory (not persisted) so a refresh
+// after ticking a step keeps the same card open.
+let expandedTasks = new Set();
+let noteEditStepId = null;
+function toggleExpand(id, ev){ if (ev) ev.stopPropagation(); if (expandedTasks.has(id)) expandedTasks.delete(id); else expandedTasks.add(id); renderTasks(); }
+// Per-step notes have NO dedicated column or action (migration 0004 has
+// only id/todo_id/title/done/position), so they ride the existing notes
+// table with a step-scoped prefix, via the existing addNote/updateNote
+// actions. There is no deleteNote action, so an emptied note is simply
+// left alone (same rule as a cleared task description).
+function stepNotePrefix(todoId, stepId){ return '📋 یادداشت گام «' + todoId + ':' + stepId + '»:\n'; }
+function stepNoteFor(todoId, stepId){
+  const prefix = stepNotePrefix(todoId, stepId);
+  const n = (S.notes || []).find(x=>String(x.text || '').indexOf(prefix) === 0);
+  if (!n) return null;
+  return { id: n.id, body: String(n.text).slice(prefix.length).trim() };
+}
+async function toggleStepInline(todoId, stepId, done, ev){
+  if (ev) ev.stopPropagation();
+  try { await call('updateStep', { id: stepId, done: !!done }); await refresh(); }
+  catch(e){ showErr(e.message); }
+}
+function toggleStepNoteEditor(todoId, stepId, ev){
+  if (ev) ev.stopPropagation();
+  noteEditStepId = (noteEditStepId === stepId) ? null : stepId;
+  renderTasks();
+}
+async function saveStepNote(todoId, stepId){
+  const el = document.getElementById('stepNoteInput');
+  const text = el ? el.value.trim() : '';
+  noteEditStepId = null;
+  if (!text) { renderTasks(); return; }
+  try {
+    const sn = stepNoteFor(todoId, stepId);
+    const full = stepNotePrefix(todoId, stepId) + text;
+    if (sn) await call('updateNote', { id: sn.id, text: full });
+    else await call('addNote', { text: full });
+    await refresh();
+  } catch(e){ showErr(e.message); }
+}
+function subStepsHtml(t){
+  const steps = stepsFor(t.id);
+  if (!steps.length) return '';
+  return '<div class="sub-list" onclick="event.stopPropagation()">' + steps.map(s=>{
+    const sn = stepNoteFor(t.id, s.id);
+    const editor = (noteEditStepId === s.id)
+      ? '<div class="row" style="margin-top:6px"><input type="text" id="stepNoteInput" value="'+esc(sn ? sn.body : '')+'" placeholder="یادداشت کوتاه برای این گام…" style="flex:1;margin-bottom:0" onkeydown="if(event.key===\'Enter\'){event.preventDefault();saveStepNote('+t.id+','+s.id+')}"><button class="btn-teal btn-sm" onclick="saveStepNote('+t.id+','+s.id+')">ذخیره</button></div>'
+      : '';
+    return '<div class="sub-step'+(s.done?' done':'')+'"><input type="checkbox" '+(s.done?'checked':'')+' onchange="toggleStepInline('+t.id+','+s.id+',this.checked,event)"><div style="flex:1;min-width:0"><div class="sub-title">'+esc(s.text)+'</div>' +
+      (sn ? '<div class="sub-note">📝 '+esc(sn.body)+'</div>' : '') + editor + '</div>' +
+      '<div style="flex:none"><button class="btn-ghost btn-sm" onclick="toggleStepNoteEditor('+t.id+','+s.id+',event)">'+(sn ? 'ویرایش یادداشت' : '＋ یادداشت')+'</button></div></div>';
+  }).join('') + '</div>';
+}
+
+// ---------- Guide rendering ----------
+// A multi-line guide renders as a readable bullet list (one line = one
+// solution); a single line renders as a plain paragraph.
+function guideListHtml(detail){
+  const text = String(detail || '').trim();
+  if (!text) return '<p class="meta">هنوز راهنمایی نوشته نشده.</p>';
+  const lines = text.split('\n').map(s=>s.trim().replace(/^[-•–*]\s+/, '')).filter(Boolean);
+  if (lines.length <= 1) return '<p style="margin:8px 0 0;line-height:1.8">'+esc(lines[0] || text)+'</p>';
+  return '<ul class="guide-list">' + lines.map(l=>'<li>'+esc(l)+'</li>').join('') + '</ul>';
+}
+function renderGuidePreview(){
+  const el = document.getElementById('guidePreview');
+  if (!el || !TS) return;
+  el.innerHTML = guideListHtml(TS.detail);
+}
+function addGuideLine(){
+  const el = document.getElementById('guideText'); if (!el || !TS) return;
+  TS.detail = (TS.detail || '').trim() ? (TS.detail || '').trim() + '\n' : '';
+  el.value = TS.detail;
+  try { el.setSelectionRange(el.value.length, el.value.length); } catch(e){}
+  el.focus();
+  renderGuidePreview();
 }
 function taskDetailNote(t){
   const prefix = '📋 جزئیات تسک «' + t.title + '»:';
@@ -848,23 +1009,36 @@ function filteredTasks(){
     return true;
   });
 }
+function chipCount(kind, v){
+  if (!S) return 0;
+  const me = mePerson();
+  return S.todos.filter(t=>{
+    if (kind === 'person') {
+      if (v === 'all') return true;
+      if (v === 'mine') return t.assignee === me || t.assignee === 'both';
+      return t.assignee === v;
+    }
+    if (v === 'overdue') { const d = daysUntil(t.deadline); return t.status !== 'done' && d !== null && d < 0; }
+    if (v === 'week') { const d = daysUntil(t.deadline); return d !== null && d >= 0 && d <= 7; }
+    if (v === 'nodate') return !t.deadline;
+    return true;
+  }).length;
+}
 function renderTaskChips(){
   const chips = [
     ['all', 'همه', 'person'], ['mine', 'فقط من', 'person'], ['amir', 'امیر', 'person'], ['negin', 'نگین', 'person'],
     ['overdue', 'دیرکرده', 'due'], ['week', 'این هفته', 'due'], ['nodate', 'بدون مهلت', 'due'],
   ];
   const el = document.getElementById('taskChips'); if (!el) return;
-  el.innerHTML = chips.map(([v, label, kind])=>{
+  // Category/status filters live in the filter sheet; when any is set,
+  // the filter button itself shows the count and the active state.
+  const extra = (taskFilter.cat !== 'all' ? 1 : 0) + (taskFilter.status !== 'all' ? 1 : 0);
+  let html = '<button class="filter-chip '+(extra ? 'on' : '')+'" onclick="openFilterSheet()">⚙️ فیلترها'+(extra ? ' ('+toFaDigits(extra)+')' : '')+'</button>';
+  html += chips.map(([v, label, kind])=>{
     const on = (kind === 'person' ? taskFilter.person : taskFilter.due) === v;
-    return '<button class="filter-chip '+(on?'on':'')+'" onclick="setTaskChip(\''+kind+'\',\''+v+'\')">'+label+'</button>';
+    return '<button class="filter-chip '+(on?'on':'')+'" onclick="setTaskChip(\''+kind+'\',\''+v+'\')">'+label+' ('+toFaDigits(chipCount(kind, v))+')</button>';
   }).join('');
-  const active = [];
-  if (taskFilter.person !== 'all') active.push(taskFilter.person === 'mine' ? 'فقط من' : ASSIGNEE[taskFilter.person]);
-  if (taskFilter.due !== 'all') active.push(taskFilter.due === 'overdue' ? 'دیرکرده' : taskFilter.due === 'week' ? 'این هفته' : 'بدون مهلت');
-  if (taskFilter.cat !== 'all') active.push(taskFilter.cat);
-  if (taskFilter.status !== 'all') active.push(STATUS[taskFilter.status]);
-  const note = document.getElementById('filterNote');
-  if (note) note.textContent = active.length ? 'فیلتر فعال: ' + active.join(' · ') : '';
+  el.innerHTML = html;
 }
 function setTaskChip(kind, v){
   if (kind === 'person') taskFilter.person = v; else taskFilter.due = v;
@@ -889,13 +1063,25 @@ function taskCardHtml(t){
   const det = taskDetail(t);
   const prog = stepsProgress(t.id);
   const priCls = t.priority === 'high' ? 'pri-high' : t.priority === 'low' ? 'pri-low' : 'pri-medium';
-  return '<div class="card item task-card" onclick="openTaskSheet('+t.id+')"><div class="row" style="justify-content:space-between">' +
+  const stCls = t.status === 'done' ? 'st-done' : t.status === 'in_progress' ? 'st-prog' : 'st-que';
+  // Trackable at a glance: server-backed steps get their bar + percent;
+  // tasks without steps get a 3-stage track (صف → در حال انجام → تمام).
+  const trackFill = t.status === 'done' ? 3 : t.status === 'in_progress' ? 2 : 1;
+  const progressHtml = prog
+    ? '<div class="meta" style="margin-top:8px">✓ گام‌ها '+toFaDigits(prog.done)+' از '+toFaDigits(prog.total)+' · '+Math.round(prog.done/prog.total*100)+'%</div><div class="steps-bar"><i style="width:'+Math.round(prog.done/prog.total*100)+'%"></i></div>'
+    : '<div class="track" aria-hidden="true"><i class="'+(trackFill>=1?'on':'')+'"></i><i class="'+(trackFill>=2?'on':'')+'"></i><i class="'+(trackFill>=3?'on':'')+'"></i></div>';
+  const steps = stepsFor(t.id);
+  const expanded = expandedTasks.has(t.id);
+  const tickNext = t.status === 'done' ? 'in_progress' : 'done';
+  return '<div class="card item task-card'+(t.status==='done' ? ' is-done' : '')+'" onclick="openTaskSheet('+t.id+')"><div class="row" style="justify-content:space-between">' +
+    '<button class="tick'+(t.status==='done'?' on':'')+'" onclick="event.stopPropagation();updateTodo('+t.id+',\''+tickNext+'\')" aria-label="انجام شد">✓</button>' +
     '<div class="title" style="flex:1">'+esc(t.title)+'</div>' +
-    '<span class="avatar '+(t.assignee==='both'?'both':'')+'">'+esc(ASSIGNEE_INITIAL[t.assignee] || '?')+'</span></div>' +
+    '<span class="tag '+stCls+'" style="flex:none">'+STATUS[t.status]+'<i class="pri-dot '+priCls+'"></i></span></div>' +
     '<div class="row" style="margin-top:8px"><span class="tag">'+esc(catLabel(t.category))+'</span>' + dueChip(t) +
-    '<span class="tag">'+STATUS[t.status]+'<i class="pri-dot '+priCls+'"></i></span></div>' +
+    '<span class="tag who">'+esc(ASSIGNEE[t.assignee] || '؟')+'</span></div>' +
     (det ? '<div class="task-note">'+esc(det).replace(/\n/g,'<br>')+'</div>' : '') +
-    (prog ? '<div class="meta" style="margin-top:8px">✓ گام‌ها '+toFaDigits(prog.done)+' از '+toFaDigits(prog.total)+'</div><div class="steps-bar"><i style="width:'+Math.round(prog.done/prog.total*100)+'%"></i></div>' : '') +
+    progressHtml +
+    (steps.length ? '<div class="row" style="margin-top:8px" onclick="event.stopPropagation()"><button class="btn-ghost btn-sm" onclick="toggleExpand('+t.id+',event)">گام‌ها ('+toFaDigits(steps.length)+') '+(expanded?'▴':'▾')+'</button></div>' + (expanded ? subStepsHtml(t) : '') : '') +
     '<div class="row" style="margin-top:10px" onclick="event.stopPropagation()">' +
     '<button class="btn-ghost btn-sm" onclick="updateTodo('+t.id+',\''+NEXT_STATUS[t.status]+'\')">'+NEXT_LABEL[t.status]+'</button>' +
     '<button class="btn-ghost btn-sm" onclick="rescheduleTomorrow('+t.id+')">فردا</button>' +
@@ -903,14 +1089,15 @@ function taskCardHtml(t){
 }
 function renderTasks(){
   if (!S) return;
+  renderTaskChips();
   const list = filteredTasks();
-  const unc = list.filter(t=>t.category==='نامشخص');
-  const rest = list.filter(t=>t.category!=='نامشخص');
+  const unc = sortSelfFirst(list.filter(t=>t.category==='نامشخص'));
+  const rest = sortSelfFirst(list.filter(t=>t.category!=='نامشخص'));
   let html = '';
-  if (unc.length) html += '<div class="meta" style="margin-bottom:12px">کارهای «نامشخص» هنوز دسته ندارند؛ موقع دسته‌بندی چیده می‌شوند.</div>';
+  if (unc.length) html += '<div class="meta" style="margin-bottom:12px">«نامشخص» یعنی هنوز دسته ندارد.</div>';
   if (taskView === 'board') {
     ['queued','in_progress','done'].forEach(st=>{
-      const items = list.filter(t=>t.status===st);
+      const items = sortSelfFirst(list.filter(t=>t.status===st));
       html += '<h2>'+STATUS[st]+' ('+items.length+')</h2>' + (items.length ? items.map(taskCardHtml).join('') : '<div class="meta">کاری نیست.</div>');
     });
   } else if (taskView === 'mine') {
@@ -935,6 +1122,11 @@ function renderTasks(){
     if (!mine.length) html += '<div class="meta">کاری برای تو نیست.</div>';
     void today;
   } else {
+    const anyFilter = taskFilter.person !== 'all' || taskFilter.due !== 'all' || taskFilter.cat !== 'all' || taskFilter.status !== 'all';
+    const parts = [];
+    if (anyFilter) parts.push(toFaDigits(list.length)+' کار با این فیلترها');
+    if (mePersonOrNull()) parts.push('اول کارهای تو');
+    if (parts.length) html += '<div class="meta" style="margin-bottom:10px">'+parts.join(' · ')+'</div>';
     html += unc.map(taskCardHtml).join('') + rest.map(taskCardHtml).join('');
     if (!list.length) html += '<div class="meta">کاری با این فیلترها نیست.</div>';
   }
@@ -968,10 +1160,13 @@ function openTaskSheet(id){
 function renderTaskSheet(){
   if (!TS) return;
   const dateLabel = TS.deadline ? fmtStoredDate(TS.deadline) : 'بدون مهلت';
-  const stepsHtml = TS.steps.map((s, i)=>
-    '<div class="step-row"><input type="checkbox" '+(s.done?'checked':'')+' onchange="TS.steps['+i+'].done=this.checked;renderTaskSheet()">' +
+  const stepsHtml = TS.steps.map((s, i)=>{
+    const sn = s.id ? stepNoteFor(TS.id, s.id) : null;
+    return '<div class="step-row"><input type="checkbox" '+(s.done?'checked':'')+' onchange="TS.steps['+i+'].done=this.checked;renderTaskSheet()">' +
     '<input type="text" value="'+esc(s.text)+'" onchange="TS.steps['+i+'].text=this.value">' +
-    '<button class="btn-danger btn-sm" onclick="TS.steps.splice('+i+',1);renderTaskSheet()">✕</button></div>').join('');
+    '<button class="btn-danger btn-sm" onclick="TS.steps.splice('+i+',1);renderTaskSheet()">✕</button></div>' +
+    (sn ? '<div class="sub-note" style="margin:0 0 8px">📝 '+esc(sn.body)+'</div>' : '');
+  }).join('');
   openSheet(
     '<h2 style="margin-top:0">ویرایش کار</h2>' +
     '<input id="sheetTitle" value="'+esc(TS.title)+'" placeholder="عنوان کار" onchange="TS.title=this.value">' +
@@ -987,7 +1182,9 @@ function renderTaskSheet(){
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'week\')">هفتهٔ بعد</button>' +
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'\')">بدون مهلت</button>' +
     '<button class="btn-ghost btn-sm" onclick="openSheetPicker()">📅 تقویم</button></div>' +
-    '<p class="meta">توضیح</p><textarea onchange="TS.detail=this.value" style="min-height:110px">'+esc(TS.detail)+'</textarea>' +
+    '<p class="meta">راهنمای انجام — چند راه‌حل بنویس؛ هر راه در یک خط</p><textarea id="guideText" oninput="TS.detail=this.value;renderGuidePreview()" style="min-height:110px">'+esc(TS.detail)+'</textarea>' +
+    '<div class="row" style="margin-top:2px"><button class="btn-ghost btn-sm" onclick="addGuideLine()">＋ راه‌حل تازه</button></div>' +
+    '<div id="guidePreview" style="margin-top:8px">'+guideListHtml(TS.detail)+'</div>' +
     '<h2>گام‌ها</h2>' +
     (TS.steps.length ? stepsHtml : '<p class="meta">هنوز گامی نیست.</p>') +
     '<div class="row" style="margin-top:8px"><button class="btn-ghost btn-sm" onclick="addSheetStep()">＋ گام تازه</button><button class="btn-ghost btn-sm" onclick="breakIntoSteps()">✦ شکستن به گام‌ها</button></div>' +
