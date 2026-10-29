@@ -128,17 +128,23 @@
   @media (max-width:480px){ header { padding:10px 12px; } header h1 { font-size:1rem; } }
   .more-item { width:100%; text-align:right; background:var(--card); color:var(--txt); border-bottom:1px solid var(--line); border-radius:0; padding:16px 4px; font-size:1rem; display:flex; justify-content:space-between; align-items:center; }
   .more-item:last-child { border-bottom:0; }
+  .pw-toggle { color:var(--txt); }
+  #pipeRail { display:flex; flex-wrap:nowrap; overflow-x:auto; gap:8px; padding-bottom:4px; }
+  #pipeRail .filter-chip { flex:none; white-space:nowrap; }
+  .sticky-rail { position:sticky; top:56px; z-index:4; background:var(--bg); padding:8px 0; }
+  .active-filter-banner { background:var(--tagteal); border-radius:12px; padding:10px 12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
 </style>
 </head>
 <body>
 <header>
   <h1>پنل مدیریت</h1>
   <button id="themeBtn" class="btn-ghost btn-sm" onclick="toggleTheme()" title="تغییر حالت روشن/تیره">🌙 تیره</button>
-  <span class="chip" id="userChip">…</span>
+  <span class="chip" id="userChip" style="display:none">…</span>
   <button id="logoutBtn" class="btn-ghost btn-sm" style="display:none" onclick="logout()">خروج</button>
 </header>
 <main>
   <div id="errBox"></div>
+  <div id="bootLoading" class="center" style="padding:20px">در حال بارگذاری…</div>
   <div id="pickerRoot"></div>
   <div id="sheetRoot"></div>
 
@@ -213,12 +219,13 @@
     <section class="screen" id="scr-cal">
       <div class="card">
         <div class="row" style="justify-content:space-between">
-          <button class="btn-ghost btn-sm" onclick="moveMonth(-1)">‹ ماه قبل</button>
+          <button class="btn-ghost btn-sm" onclick="moveMonth(-1)">› ماه قبل</button>
           <b id="calTitle"></b>
-          <button class="btn-ghost btn-sm" onclick="moveMonth(1)">ماه بعد ›</button>
+          <button class="btn-ghost btn-sm" onclick="moveMonth(1)">ماه بعد ‹</button>
         </div>
         <div class="row" style="margin-top:10px"><button class="btn-teal btn-sm" onclick="jumpToday()">📍 امروز</button><span class="meta">نقطه یعنی آن روز کار یا گزارش دارد.</span></div>
         <div class="cal-grid" id="calGrid" style="margin-top:10px"></div>
+        <div class="meta" style="margin-top:8px">راهنما: حاشیه نارنجی = امروز، حاشیه فیروزه‌ای = روز انتخاب‌شده، نقطه = آن روز کار یا گزارش دارد.</div>
       </div>
       <h2>کارها و گزارش‌های روز انتخاب‌شده</h2><div id="dayBox"></div>
       <div class="card">
@@ -260,11 +267,11 @@
         </div>
         <select id="repCat"></select>
         <select id="repTask"></select>
-        <div class="row" style="margin-bottom:8px"><button class="btn-ghost btn-sm" onclick="fillReportTemplate()">📝 قالب سه‌بخشی</button><span class="meta">انجام‌شده / در حال انجام / موانع</span></div>
+        <div class="row" style="margin-bottom:8px"><button class="btn-ghost btn-sm" onclick="fillReportTemplate()">📝 قالب سه‌بخشی</button><span class="meta">انجام‌شده / در حال انجام / موانع و فردا</span></div>
         <textarea id="repText" placeholder="گزارش امروز…"></textarea>
         <button class="btn-teal" onclick="addReport()">ثبت گزارش</button>
       </div>
-      <div class="card"><b>۷ روز گذشته</b><div class="row" id="repDots" style="margin-top:10px"></div><p class="meta" style="margin-top:8px">● یعنی آن روز گزارش دارد، ○ یعنی ندارد.</p></div>
+      <div class="card"><b id="repDotsTitle">۷ روز گذشته</b><div class="row" id="repDots" style="margin-top:10px"></div><p class="meta" style="margin-top:8px">● یعنی آن روز گزارش دارد، ○ یعنی ندارد.</p></div>
       <div class="row" id="repCatChips" style="margin-bottom:12px"></div>
       <h2>سابقهٔ گزارش‌ها</h2><div id="repList"></div>
     </section>
@@ -317,7 +324,7 @@
   </div>
 </main>
 
-<button id="fab" style="display:none" onclick="fabAction()">＋</button>
+<button id="fab" style="display:none" onclick="fabAction()" title="کار تازه" aria-label="کار تازه">＋</button>
 
 <nav id="nav" style="display:none">
   <button class="on" onclick="showScreen('home',this)"><span>🏠</span>خانه</button>
@@ -359,6 +366,7 @@ function toggleTheme(){
 function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function showErr(m){ document.getElementById('errBox').innerHTML = '<div class="err">'+esc(m)+'</div>'; }
 function clearErr(){ document.getElementById('errBox').innerHTML = ''; }
+function hideBootLoading(){ const el = document.getElementById('bootLoading'); if (el) el.style.display='none'; }
 function togglePw(id, btn){
   const el = document.getElementById(id); if (!el) return;
   const show = el.type === 'password';
@@ -427,13 +435,16 @@ async function refresh(){
       document.getElementById('nav').style.display='none';
       document.getElementById('fab').style.display='none';
       document.getElementById('pending').style.display='block';
+      hideBootLoading();
       document.getElementById('pendingText').textContent = 'سلام ' + (res.name || '') + '! درخواست دسترسی‌ات ثبت شد.';
       return;
     }
     S = res;
     await importLocalSteps();
     clearErr();
+    hideBootLoading();
     document.getElementById('userChip').textContent = res.me.name || 'کاربر';
+    document.getElementById('userChip').style.display = 'inline-block';
     if (PANEL_BUILD === 'web') document.getElementById('logoutBtn').style.display = 'inline-block';
     document.getElementById('pending').style.display='none';
     document.getElementById('app').style.display='block';
@@ -442,6 +453,7 @@ async function refresh(){
     fillCats(); renderAll(); updateFab();
   } catch(e){
     if (PANEL_BUILD === 'web' && /401|Unauthorized/i.test(e.message)) {
+      hideBootLoading();
       supabaseSession = null;
       document.getElementById('app').style.display='none';
       document.getElementById('nav').style.display='none';
@@ -502,7 +514,13 @@ function fabAction(){
 }
 function updateFab(){
   const fab = document.getElementById('fab'); if (!fab) return;
+  // Hidden while any sheet or the date picker is open: a translucent
+  // backdrop alone does not stop the FAB showing through / being tapped.
+  if (sheetOpen || pickerState) { fab.style.display = 'none'; return; }
   // One contextual FAB per screen; no FAB where there is no primary create action.
+  const labels = { home:'کار تازه', tasks:'کار تازه', cal:'گزارش تازه', pipe:'محتوای تازه', reports:'گزارش تازه', notes:'یادداشت تازه', analytics:'', channels:'' };
+  const label = labels[currentScreen] || 'کار تازه';
+  fab.title = label; fab.setAttribute('aria-label', label);
   fab.style.display = (currentScreen === 'analytics' || currentScreen === 'channels') ? 'none' : 'block';
 }
 let sheetOpen = false;
@@ -511,6 +529,7 @@ function openSheet(html){
   // sheet (e.g. after a date pick) must not stack entries.
   if (!sheetOpen) { sheetOpen = true; histPush({panel:'sheet'}); }
   document.getElementById('sheetRoot').innerHTML = '<div class="sheet-backdrop" onclick="if(event.target===this)closeSheet()"><div class="sheet-box"><div class="sheet-handle"></div>' + html + '</div></div>';
+  updateFab();
 }
 function closeSheet(){
   const wasOpen = sheetOpen; sheetOpen = false;
@@ -522,6 +541,8 @@ function closeSheet(){
     let st = null; try { st = history.state; } catch(e){}
     if (st && st.panel === 'sheet') histReplace({panel:'screen', screen: currentScreen});
   }
+  if (document.getElementById('app').style.display === 'block') updateFab();
+  else document.getElementById('fab').style.display = 'none';
 }
 // Back button: close any picker first, then any sheet, then return to
 // the previous in-app screen. A null state means the bottom of the app
@@ -537,7 +558,7 @@ function openMoreSheet(btn){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   if (btn) btn.classList.add('on');
   openSheet(
-    '<h2 style="margin-top:0">بیشتر</h2>' +
+    '<div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin-top:0;margin-bottom:0">بیشتر</h2><button class="btn-ghost btn-sm" onclick="closeSheet()">✕ بستن</button></div>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'reports\')">📝 گزارش‌ها <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'analytics\')">📈 تحلیل <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'channels\')">📡 کانال‌ها <span>‹</span></button>' +
@@ -547,9 +568,10 @@ function openMoreSheet(btn){
 function fillCats(){
   const opts = S.categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
   ['repCat','pipeCat'].forEach(id=>{ document.getElementById(id).innerHTML = opts; document.getElementById(id).value = 'نامشخص'; });
+  try { if (pipeCatSel !== 'all') { const pc = document.getElementById('pipeCat'); if (pc) pc.value = pipeCatSel; } } catch(e) {}
   document.getElementById('pipeStage').innerHTML = STAGES.map((s,i)=>'<option value="'+i+'">'+s+'</option>').join('');
   const rt = document.getElementById('repTask');
-  if (rt) rt.innerHTML = '<option value="">بدون تسک (گزارش کلی)</option>' + S.todos.map(t=>'<option value="'+t.id+'">'+esc(t.title)+'</option>').join('');
+  if (rt) rt.innerHTML = '<option value="">بدون تسک (گزارش کلی)</option>' + S.todos.map(t=>'<option value="'+t.id+'">'+esc(t.title)+' (#'+t.id+(fmtCreated(t.created_at) ? ' · ' + fmtCreated(t.created_at) : '')+')</option>').join('');
   const ac = document.getElementById('analyticsCat');
   if (ac) { const prev = ac.value; ac.innerHTML = '<option value="all">همهٔ دسته‌ها</option>' + opts; if (prev) ac.value = prev; }
   const now = jalaliStr(new Date());
@@ -607,6 +629,13 @@ function dueChip(t){
   if (diff <= 7) return '<span class="tag due-amber">به‌زودی · ' + fmtStoredDate(t.deadline) + '</span>';
   return '<span class="tag due-grey">' + fmtStoredDate(t.deadline) + '</span>';
 }
+function fmtCreated(ts){
+  const n = Number(ts);
+  if (!n) return '';
+  const d = new Date(n * 1000);
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  return fmtStoredDate(jalaliStr(d)) + ' ' + toFaDigits(hh + ':' + mm);
+}
 function mePerson(){
   if (!S || !S.me) return 'amir';
   if (S.me.tgId === 94731359 || S.me.email === 'amirmajidi1375@gmail.com') return 'amir';
@@ -634,6 +663,7 @@ function openPicker(hiddenId){
   const pd = jalaliParts(d);
   pickerState.cursor = d; pickerState.jy = pd.jy; pickerState.jm = pd.jm;
   renderPicker();
+  updateFab();
 }
 function pickerMove(delta){
   const d = new Date(pickerState.cursor);
@@ -648,7 +678,7 @@ function renderPicker(){
   const st = pickerState;
   const first = new Date(st.cursor);
   const title = fmtJalali(st.jy, st.jm, 1).replace(/^۱ /, '');
-  let html = '<div class="row" style="justify-content:space-between"><button class="btn-ghost btn-sm" onclick="pickerMove(-1)">‹ ماه قبل</button><b>' + title + '</b><button class="btn-ghost btn-sm" onclick="pickerMove(1)">ماه بعد ›</button></div>';
+  let html = '<div class="row" style="justify-content:space-between"><button class="btn-ghost btn-sm" onclick="pickerMove(-1)">› ماه قبل</button><b>' + title + '</b><button class="btn-ghost btn-sm" onclick="pickerMove(1)">ماه بعد ‹</button></div><div class="row" style="margin-top:8px"><button class="btn-teal btn-sm" onclick="pickDay(jalaliStr(new Date()))">📍 امروز</button><span class="meta">حاشیه نارنجی = امروز.</span></div>';
   html += '<div class="cal-grid" style="margin-top:10px">' + WD.map(w=>'<div class="wd">'+w+'</div>').join('');
   const offset = (first.getDay()+1)%7;
   for (let i=0;i<offset;i++) html += '<div class="empty">.</div>';
@@ -681,8 +711,10 @@ function closePicker(fromBack){
   ['sheetDeadline','sheetDeadlineView'].forEach(id=>{ const old = document.getElementById(id); if (old) old.remove(); });
   // When back closed the picker, the task sheet underneath is gone too
   // (back already popped past it) — never re-render it in that case.
-  if (pickerReturnSheet && TS && !fromBack) { pickerReturnSheet = false; renderTaskSheet(); }
+  const willReopenSheet = pickerReturnSheet && TS && !fromBack;
+  if (willReopenSheet) { pickerReturnSheet = false; renderTaskSheet(); }
   else pickerReturnSheet = false;
+  if (!willReopenSheet && document.getElementById('app').style.display === 'block') updateFab();
 }
 
 // ---------- Category suggestion (suggestion only; label de-cluttered) ----------
@@ -899,7 +931,9 @@ function renderDash(){
       '<div class="meta" style="margin-top:6px">'+mine.length+' کار باز · '+od.length+' دیرکرده</div>' +
       '<div class="meta">بعدی: ' + (next ? esc(next.title) + ' (' + fmtStoredDate(next.deadline) + ')' : '—') + '</div></div>';
   };
-  document.getElementById('balanceBox').innerHTML = personCard('amir') + personCard('negin');
+  const sharedOpen = open.filter(t=>t.assignee==='both').length;
+  document.getElementById('balanceBox').innerHTML = personCard('amir') + personCard('negin') +
+    '<p class="meta" style="text-align:center">جمع متمایز کارهای باز: ' + toFaDigits(open.length) + ' کار (کارهای «هر دو» در شمار هر دو نفر حساب شده‌اند، پس جمع دو کارت بیشتر از این عدد است' + (sharedOpen ? '؛ ' + toFaDigits(sharedOpen) + ' کار مشترک' : '') + ').</p>';
   const todayTodos = S.todos.filter(t=>t.deadline===today);
   const todayReps = S.reports.filter(r=>r.date===today);
   document.getElementById('todayBox').innerHTML = '<div class="card"><b>امروز، ' + fmtStoredDate(today) + '</b>' +
@@ -914,6 +948,7 @@ function renderDash(){
 async function approveUser(userId){ try { await call('approveUser', {userId}); await refresh(); } catch(e){ showErr(e.message); } }
 function goTasksPerson(who){ taskFilter = { person:who, due:'all', cat:'all', status:'all' }; taskView = 'list'; showScreen('tasks'); renderTasks(); }
 function goTasksFilter(patch){ taskFilter = Object.assign({ person:'all', due:'all', cat:'all', status:'all' }, patch); taskView = 'list'; showScreen('tasks'); renderTasks(); }
+function clearTaskFilters(){ taskFilter = { person:'all', due:'all', cat:'all', status:'all' }; renderTaskChips(); renderTasks(); }
 
 // ---------- Calendar ----------
 const WD = ['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'];
@@ -966,10 +1001,10 @@ function renderCal(){
   renderAgenda();
 }
 function openReportForDay(day){
-  showScreen('reports');
   document.getElementById('repDate').value = day;
   const p = parseJalali(day);
   document.getElementById('repDateView').value = p ? fmtJalali(p[0], p[1], p[2]) : day;
+  showScreen('reports');
   document.getElementById('repText').focus();
 }
 let agendaMode = 'day';
@@ -999,7 +1034,7 @@ function renderAgenda(){
 function filteredTasks(){
   const me = mePerson();
   return S.todos.filter(t=>{
-    const personOk = taskFilter.person === 'all' || (taskFilter.person === 'mine' ? (t.assignee === me || t.assignee === 'both') : t.assignee === taskFilter.person);
+    const personOk = taskFilter.person === 'all' || t.assignee === 'both' || (taskFilter.person === 'mine' ? t.assignee === me : t.assignee === taskFilter.person);
     if (!personOk) return false;
     if (taskFilter.cat !== 'all' && t.category !== taskFilter.cat) return false;
     if (taskFilter.status !== 'all' && t.status !== taskFilter.status) return false;
@@ -1016,7 +1051,7 @@ function chipCount(kind, v){
     if (kind === 'person') {
       if (v === 'all') return true;
       if (v === 'mine') return t.assignee === me || t.assignee === 'both';
-      return t.assignee === v;
+      return t.assignee === v || t.assignee === 'both';
     }
     if (v === 'overdue') { const d = daysUntil(t.deadline); return t.status !== 'done' && d !== null && d < 0; }
     if (v === 'week') { const d = daysUntil(t.deadline); return d !== null && d >= 0 && d <= 7; }
@@ -1064,21 +1099,23 @@ function taskCardHtml(t){
   const prog = stepsProgress(t.id);
   const priCls = t.priority === 'high' ? 'pri-high' : t.priority === 'low' ? 'pri-low' : 'pri-medium';
   const stCls = t.status === 'done' ? 'st-done' : t.status === 'in_progress' ? 'st-prog' : 'st-que';
-  // Trackable at a glance: server-backed steps get their bar + percent;
-  // tasks without steps get a 3-stage track (صف → در حال انجام → تمام).
-  const trackFill = t.status === 'done' ? 3 : t.status === 'in_progress' ? 2 : 1;
+  // Progress only when steps exist: bar WITH its x/y label. A task with
+  // no steps shows no progress bar at all (the old 3-segment track
+  // looked like an unexplained progress bar).
   const progressHtml = prog
     ? '<div class="meta" style="margin-top:8px">✓ گام‌ها '+toFaDigits(prog.done)+' از '+toFaDigits(prog.total)+' · '+Math.round(prog.done/prog.total*100)+'%</div><div class="steps-bar"><i style="width:'+Math.round(prog.done/prog.total*100)+'%"></i></div>'
-    : '<div class="track" aria-hidden="true"><i class="'+(trackFill>=1?'on':'')+'"></i><i class="'+(trackFill>=2?'on':'')+'"></i><i class="'+(trackFill>=3?'on':'')+'"></i></div>';
+    : '';
   const steps = stepsFor(t.id);
   const expanded = expandedTasks.has(t.id);
   const tickNext = t.status === 'done' ? 'in_progress' : 'done';
-  return '<div class="card item task-card'+(t.status==='done' ? ' is-done' : '')+'" onclick="openTaskSheet('+t.id+')"><div class="row" style="justify-content:space-between">' +
+  const createdMeta = fmtCreated(t.created_at);
+  return '<div class="card item task-card'+(t.status==='done' ? ' is-done' : '')+'" onclick="openTaskSheet('+t.id+')"><div class="row" style="justify-content:space-between;flex-wrap:nowrap">' +
     '<button class="tick'+(t.status==='done'?' on':'')+'" onclick="event.stopPropagation();updateTodo('+t.id+',\''+tickNext+'\')" aria-label="انجام شد">✓</button>' +
     '<div class="title" style="flex:1">'+esc(t.title)+'</div>' +
-    '<span class="tag '+stCls+'" style="flex:none">'+STATUS[t.status]+'<i class="pri-dot '+priCls+'"></i></span></div>' +
+    '<span class="tag '+stCls+'" style="flex:none;white-space:nowrap">'+STATUS[t.status]+'<i class="pri-dot '+priCls+'"></i></span></div>' +
     '<div class="row" style="margin-top:8px"><span class="tag">'+esc(catLabel(t.category))+'</span>' + dueChip(t) +
     '<span class="tag who">'+esc(ASSIGNEE[t.assignee] || '؟')+'</span></div>' +
+    '<div class="meta" style="margin-top:6px">شناسه #'+t.id+(createdMeta ? ' · ساخته‌شده ' + createdMeta : '')+'</div>' +
     (det ? '<div class="task-note">'+esc(det).replace(/\n/g,'<br>')+'</div>' : '') +
     progressHtml +
     (steps.length ? '<div class="row" style="margin-top:8px" onclick="event.stopPropagation()"><button class="btn-ghost btn-sm" onclick="toggleExpand('+t.id+',event)">گام‌ها ('+toFaDigits(steps.length)+') '+(expanded?'▴':'▾')+'</button></div>' + (expanded ? subStepsHtml(t) : '') : '') +
@@ -1091,9 +1128,11 @@ function renderTasks(){
   if (!S) return;
   renderTaskChips();
   const list = filteredTasks();
+  const taskAnyFilter = taskFilter.person !== 'all' || taskFilter.due !== 'all' || taskFilter.cat !== 'all' || taskFilter.status !== 'all';
+  const taskFilterLabel = [taskFilter.person!=='all' ? (ASSIGNEE[taskFilter.person] || taskFilter.person) : '', taskFilter.due==='overdue' ? 'دیرکرده' : taskFilter.due==='week' ? 'این هفته' : taskFilter.due==='nodate' ? 'بدون مهلت' : '', taskFilter.cat!=='all' ? taskFilter.cat : '', taskFilter.status!=='all' ? STATUS[taskFilter.status] : ''].filter(Boolean).join(' · ');
   const unc = sortSelfFirst(list.filter(t=>t.category==='نامشخص'));
   const rest = sortSelfFirst(list.filter(t=>t.category!=='نامشخص'));
-  let html = '';
+  let html = taskAnyFilter ? '<div class="active-filter-banner"><span>فیلتر فعال: ' + esc(taskFilterLabel) + '</span><button class="btn-ghost btn-sm" onclick="clearTaskFilters()">پاک کردن</button></div>' : '';
   if (unc.length) html += '<div class="meta" style="margin-bottom:12px">«نامشخص» یعنی هنوز دسته ندارد.</div>';
   if (taskView === 'board') {
     ['queued','in_progress','done'].forEach(st=>{
@@ -1154,7 +1193,7 @@ function openTaskSheet(id){
   const t = S.todos.find(x=>x.id===id); if (!t) return;
   const steps = stepsFor(id);
   const detailNote = taskDetailNote(t);
-  TS = { id: t.id, title: t.title, status: t.status, assignee: t.assignee, category: t.category, priority: t.priority, deadline: t.deadline || '', detail: taskDetail(t), hasServerDetail: !!detailNote, detailNoteId: detailNote ? detailNote.id : null, steps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})), serverSteps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})) };
+  TS = { id: t.id, createdAt: t.created_at, title: t.title, status: t.status, assignee: t.assignee, category: t.category, priority: t.priority, deadline: t.deadline || '', detail: taskDetail(t), hasServerDetail: !!detailNote, detailNoteId: detailNote ? detailNote.id : null, steps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})), serverSteps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})) };
   renderTaskSheet();
 }
 function renderTaskSheet(){
@@ -1168,7 +1207,7 @@ function renderTaskSheet(){
     (sn ? '<div class="sub-note" style="margin:0 0 8px">📝 '+esc(sn.body)+'</div>' : '');
   }).join('');
   openSheet(
-    '<h2 style="margin-top:0">ویرایش کار</h2>' +
+    '<h2 style="margin-top:0">ویرایش کار</h2>' + '<div class="meta" style="margin-bottom:12px">شناسه #' + TS.id + (TS.createdAt ? ' · ساخته‌شده ' + fmtCreated(TS.createdAt) : '') + '</div>' +
     '<input id="sheetTitle" value="'+esc(TS.title)+'" placeholder="عنوان کار" onchange="TS.title=this.value">' +
     '<p class="meta">وضعیت</p><div class="seg" style="margin-bottom:12px">' +
     ['queued','in_progress','done'].map(s=>'<button class="'+(TS.status===s?'on':'')+'" onclick="TS.status=\''+s+'\';renderTaskSheet()">'+STATUS[s]+'</button>').join('') + '</div>' +
@@ -1284,7 +1323,8 @@ function fillReportTemplate(){
 function renderRepCatChips(){
   const el = document.getElementById('repCatChips'); if (!el || !S) return;
   el.innerHTML = '<button class="filter-chip '+(repCatFilter==='all'?'on':'')+'" onclick="repCatFilter=\'all\';renderRepCatChips();renderReports()">همه</button>' +
-    S.categories.map(c=>'<button class="filter-chip '+(repCatFilter===c?'on':'')+'" onclick="repCatFilter=\''+c+'\';renderRepCatChips();renderReports()">'+esc(c)+'</button>').join('');
+    S.categories.map(c=>'<button class="filter-chip '+(repCatFilter===c?'on':'')+'" onclick="repCatFilter=\''+c+'\';renderRepCatChips();renderReports()">'+esc(c)+'</button>').join('') +
+    (repCatFilter!=='all' ? '<button class="filter-chip" onclick="repCatFilter=\'all\';renderRepCatChips();renderReports()">✕ پاک کردن</button>' : '');
 }
 async function addReport(){
   const text = document.getElementById('repText').value.trim();
@@ -1296,14 +1336,31 @@ async function addReport(){
 }
 function renderReports(){
   if (!S) return;
-  // Missing-day dots: last 7 days.
+  // Missing-day dots: anchored to the selected report day when it is not
+  // today (coming from Calendar: neighbours around that day), otherwise
+  // the last 7 days ending today.
+  const repAnchorVal = document.getElementById('repDate') ? document.getElementById('repDate').value : '';
+  const repAnchor = repAnchorVal ? jalaliToDate(repAnchorVal) : null;
+  const todayStr = jalaliStr(new Date());
+  const isAnchorToday = !repAnchor || jalaliStr(repAnchor) === todayStr;
   let dots = '';
-  for (let i=6;i>=0;i--){
-    const d = new Date(); d.setDate(d.getDate()-i);
-    const js = jalaliStr(d);
-    const has = S.reports.some(r=>r.date===js);
-    dots += '<span class="tag '+(has?'teal':'')+'" title="'+fmtStoredDate(js)+'">'+(has?'●':'○')+' '+fmtStoredDate(js)+'</span>';
+  if (isAnchorToday) {
+    for (let i=6;i>=0;i--){
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const js = jalaliStr(d);
+      const has = S.reports.some(r=>r.date===js);
+      dots += '<span class="tag '+(has?'teal':'')+'" title="'+fmtStoredDate(js)+'">'+(has?'●':'○')+' '+fmtStoredDate(js)+'</span>';
+    }
+  } else {
+    for (let i=-3;i<=3;i++){
+      const d = new Date(repAnchor); d.setDate(d.getDate()+i);
+      const js = jalaliStr(d);
+      const has = S.reports.some(r=>r.date===js);
+      const sel = i===0;
+      dots += '<span class="tag '+(has?'teal':'')+'" title="'+fmtStoredDate(js)+(sel?' · روز انتخاب‌شده':'')+'" style="'+(sel?'outline:2px solid var(--teal);font-weight:900':'')+'">'+(has?'●':'○')+' '+fmtStoredDate(js)+'</span>';
+    }
   }
+  const dotsCardTitle = document.getElementById('repDotsTitle'); if (dotsCardTitle) dotsCardTitle.textContent = isAnchorToday ? '۷ روز گذشته' : '۷ روز دور روز انتخاب‌شده';
   const dotsEl = document.getElementById('repDots'); if (dotsEl) dotsEl.innerHTML = dots;
   const list = S.reports.filter(r=>repCatFilter==='all' || r.category===repCatFilter);
   // Week-grouped history (Persian week starts Saturday).
@@ -1357,6 +1414,12 @@ function pipeCardHtml(p){
 function renderPipe(){
   if (!S) return;
   const filtered = S.pipeline.filter(p=>pipeCatSel==='all' || p.category===pipeCatSel);
+  // Add form follows the selected category filter (instead of always
+  // resetting to نامشخص in fillCats).
+  const pipeCatEl = document.getElementById('pipeCat'); if (pipeCatEl && pipeCatSel !== 'all') pipeCatEl.value = pipeCatSel;
+  const railEl = document.getElementById('pipeRail'); if (railEl) railEl.classList.toggle('sticky-rail', pipeView === 'list');
+  const pipeAnyFilter = pipeCatSel !== 'all' || pipeStageSel !== 0;
+  const pipeFilterLabel = [pipeCatSel!=='all' ? pipeCatSel : '', pipeStageSel!==0 ? STAGES[pipeStageSel] : ''].filter(Boolean).join(' · ');
   document.getElementById('stageCounts').innerHTML = STAGES.map((s,i)=>{
     const n = S.pipeline.filter(p=>p.stage===i).length;
     return '<span class="tag '+(i===5?'teal':'')+'">'+s+': '+toFaDigits(n)+'</span>';
@@ -1366,7 +1429,7 @@ function renderPipe(){
     const n = filtered.filter(p=>p.stage===i).length;
     return '<button class="filter-chip '+(pipeStageSel===i && pipeView==='stage'?'on':'')+'" onclick="pipeStageSel='+i+';setPipeView(\'stage\')">'+s+' ('+toFaDigits(n)+')</button>';
   }).join('');
-  let html = '';
+  let html = pipeAnyFilter ? '<div class="active-filter-banner"><span>فیلتر فعال: ' + esc(pipeFilterLabel) + '</span><button class="btn-ghost btn-sm" onclick="clearPipeFilters()">پاک کردن</button></div>' : '';
   if (pipeView === 'stage') {
     const items = filtered.filter(p=>p.stage===pipeStageSel);
     html = '<h2>'+STAGES[pipeStageSel]+' ('+items.length+')</h2>' + (items.length ? items.map(pipeCardHtml).join('') : '<div class="meta">در این مرحله محتوایی نیست.</div>');
@@ -1379,7 +1442,8 @@ function renderPipe(){
   document.getElementById('pipeList').innerHTML = html;
 }
 function goPipeStage(i){ pipeStageSel = i; pipeView = 'stage'; showScreen('pipe'); renderPipe(); }
-function goPipeCat(c){ pipeCatSel = c; showScreen('pipe'); renderPipeCatChips(); renderPipe(); }
+function clearPipeFilters(){ pipeCatSel = 'all'; pipeStageSel = 0; pipeView = 'stage'; renderPipeCatChips(); renderPipe(); }
+function goPipeCat(c){ pipeCatSel = c; pipeStageSel = 0; pipeView = 'stage'; showScreen('pipe'); renderPipeCatChips(); renderPipe(); }
 async function addPipeline(){
   const title = document.getElementById('pipeTitle').value.trim();
   if (!title) return showErr('عنوان محتوا را بنویسید');
@@ -1391,18 +1455,28 @@ async function deletePipe(id){ try { await call('deletePipeline', {id}); await r
 // ---------- Analytics: exactly the 4 original charts, each tappable to its list ----------
 function barChart(labels, values, color){
   const total = values.reduce((a,b)=>a+b, 0);
-  if (!labels.length || total === 0) return '<div class="meta" style="padding:20px 0;text-align:center">هنوز داده‌ای نیست.</div>';
+  if (!labels.length) return '<div class="meta" style="padding:20px 0;text-align:center">هنوز داده‌ای نیست.</div>';
   const max = Math.max(1, ...values);
+  // Long category labels (7 categories) would collide at phone width:
+  // rotate them when there are more than 5 labels.
+  const rotate = labels.length > 5;
+  const svgH = rotate ? 210 : 175;
   let bars = '';
   const bw = Math.min(60, (680 - 20) / labels.length - 10);
   const totalW = labels.length * (bw + 10) - 10;
   let x = (700 - totalW) / 2;
   labels.forEach((l, i)=>{
-    const h = Math.round(values[i]/max*120);
-    bars += '<rect x="'+x+'" y="'+(140-h)+'" width="'+bw+'" height="'+h+'" rx="6" fill="'+color+'"/><text x="'+(x+bw/2)+'" y="'+(140-h-6)+'" text-anchor="middle" font-size="13">'+toFaDigits(values[i])+'</text><text x="'+(x+bw/2)+'" y="158" text-anchor="middle" font-size="13">'+esc(l)+'</text>';
+    // One consistent empty representation: a zero value is a 2px grey
+    // stub with its ۰ label, never an invisible 0-height bar, and a
+    // totally empty chart keeps the same shape plus one note below.
+    const h = values[i] === 0 ? 2 : Math.round(values[i]/max*120);
+    const fill = values[i] === 0 ? '#cbd5e1' : color;
+    const labelY = rotate ? 195 : 158;
+    const labelAttrs = rotate ? ' transform="rotate(-35 '+(x+bw/2)+' '+labelY+')" font-size="11"' : ' font-size="13"';
+    bars += '<rect x="'+x+'" y="'+(140-h)+'" width="'+bw+'" height="'+h+'" rx="6" fill="'+fill+'"/><text x="'+(x+bw/2)+'" y="'+(140-h-6)+'" text-anchor="middle" font-size="13">'+toFaDigits(values[i])+'</text><text x="'+(x+bw/2)+'" y="'+labelY+'" text-anchor="middle"'+labelAttrs+'>'+esc(l)+'</text>';
     x += bw + 10;
   });
-  return '<svg viewBox="0 0 700 175" style="width:100%">'+bars+'</svg>';
+  return '<svg viewBox="0 0 700 '+svgH+'" style="width:100%">'+bars+'</svg>' + (total === 0 ? '<div class="meta" style="text-align:center">هنوز داده‌ای نیست.</div>' : '');
 }
 function renderAnalytics(){
   if (!S) return;
@@ -1442,7 +1516,7 @@ function renderSuggestions(){
 }
 
 // ---------- Channels registry (manual, localStorage; NOT live stats — unchanged) ----------
-const CHANNEL_CATS = ['روانشناسی','شاهنامه','شده دیگه','گربه‌ها','همکار'];
+const CHANNEL_CATS = ['روانشناسی','شاهنامه','شده دیگه','گربه‌ها','همکار','بنیادی'];
 const CHANNEL_SEED = {
   'روانشناسی': [
     { net:'اینستاگرام', handle:'amirdecodes', url:'https://www.instagram.com/amirdecodes/', status:'فعال' },
@@ -1496,10 +1570,10 @@ function renderChannels(){
     const pipeN = S.pipeline.filter(p=>p.category===cat).length;
     const todoN = S.todos.filter(t=>t.category===cat).length;
     const repN = S.reports.filter(r=>r.category===cat).length;
-    const rows = (data[cat] || []).map((ch, i)=>{
+    const rows = (data[cat] && data[cat].length) ? data[cat].map((ch, i)=>{
       const link = ch.url ? '<a href="'+esc(ch.url)+'" target="_blank" rel="noopener">'+esc(ch.url)+'</a>' : '<span class="meta">بدون لینک</span>';
       return '<div class="chan-row"><b style="min-width:86px">'+esc(ch.net)+'</b><input value="'+esc(ch.handle)+'" placeholder="هندل…" onchange="chanInput(\''+cat+'\','+i+',this.value)" style="flex:1"><span class="tag">'+esc(ch.status)+'</span></div><div style="margin-bottom:10px">'+link+'</div>';
-    }).join('');
+    }).join('') : '<div class="meta">هنوز کانالی برای این دسته ثبت نشده.</div>';
     return '<div class="card"><div class="row" style="justify-content:space-between"><b>'+esc(cat)+'</b><button class="btn-ghost btn-sm" onclick="goPipeCat(\''+cat+'\')">دیدن موارد</button></div>' +
       '<div class="meta" style="margin-top:6px">خط لوله '+pipeN+' · کارها '+todoN+' · گزارش‌ها '+repN+'</div>' +
       '<div style="margin-top:10px">'+rows+'</div></div>';
@@ -1555,6 +1629,7 @@ async function bootWeb(){
     supabaseClient = mod.createClient(PANEL_CONFIG.supabaseUrl, PANEL_CONFIG.supabaseAnonKey);
     const sess = await supabaseClient.auth.getSession();
     supabaseSession = (sess.data && sess.data.session) || null;
+    hideBootLoading();
     supabaseClient.auth.onAuthStateChange(function(_ev, sess2){ supabaseSession = sess2; });
     if (!supabaseSession) { document.getElementById('login').style.display='block'; return; }
     await refresh();
@@ -1580,6 +1655,7 @@ async function logout() {
   document.getElementById('app').style.display='none';
   document.getElementById('nav').style.display='none';
   document.getElementById('fab').style.display='none';
+  document.getElementById('userChip').style.display='none';
   document.getElementById('login').style.display='block';
 }
 async function setPassword(){
@@ -1600,8 +1676,9 @@ if (PANEL_BUILD === 'web') {
   syncThemeBtn();
   bootWeb();
   if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js'); } catch(e) {} }
-} else if (!tg || !tg.initData) {
+ } else if (!tg || !tg.initData) {
   syncThemeBtn();
+  hideBootLoading();
   document.getElementById('notg').style.display='block';
 } else {
   syncThemeBtn();
