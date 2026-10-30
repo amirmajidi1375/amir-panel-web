@@ -1789,10 +1789,20 @@ function tailoredGuideHtml(t){
   const plain = guidePlain(t);
   let html = '<div class="method-card">' + (plain ? '<div style="line-height:1.9;margin-bottom:6px">💡 ' + esc(plain) + '</div>' : '') + '<div style="line-height:1.8"><b>هدف:</b> ' + esc(g.goal) + '</div>';
   if (g.note) html += '<div class="meta" style="margin-top:4px">' + esc(g.note) + '</div>';
+  // Fix11: no screenshot nagging. Steps inside the panel need no screenshot —
+  // completion is already visible there (status flip, ticked step, saved note),
+  // so they end with what the user should SEE in the panel instead. A screenshot
+  // checkpoint appears only on the FIRST step outside the panel, at most one
+  // per task, where a screenshot is the actual evidence (external site/bot).
+  let shotUsed = false;
   html += '<ol style="line-height:1.9;margin:10px 0 0;padding-right:20px">' + g.steps.map(s => {
     const where = s.link ? '<a href="' + esc(s.link) + '" target="_blank" rel="noopener">' + esc(s.where) + '</a>' : esc(s.where);
-    return '<li style="margin-top:6px">' + where + ' → ' + esc(s.action) + ' → <b>اسکرین بگیر</b>' + (s.expect ? '<div class="meta">باید دقیقاً این باشد: ' + esc(s.expect) + '</div>' : '') + '</li>';
-  }).join('') + '</ol></div>';
+    const inPanel = /پنل/.test(s.where);
+    let tail = '';
+    if (inPanel) tail = ' → باید ببینی در همین برگه ثبت شد';
+    else if (!shotUsed) { tail = ' → <b>اسکرین بگیر</b>'; shotUsed = true; }
+    return '<li style="margin-top:6px">' + where + ' → ' + esc(s.action) + tail + (s.expect ? '<div class="meta">باید دقیقاً این باشد: ' + esc(s.expect) + '</div>' : '') + '</li>';
+  }).join('') + '</ol>' + (shotUsed ? '<div class="meta" style="margin-top:6px">اسکرین فقط برای همان یک قدم بیرون از پنل است؛ قدم‌های داخل پنل را از روی همان برگه چک کن، اسکرین لازم ندارد.</div>' : '') + '</div>';
   return html;
 }
 
@@ -1850,7 +1860,7 @@ function renderTaskView(){
     '<h2>گام‌ها</h2>' + stepsHtml +
     '<h2 style="margin-top:16px">راهنمای انجام</h2>' + guideHtml + guideStepsBtn +
     '<h2 style="margin-top:16px">اسکرین‌شات قدم‌ها</h2>' +
-    '<p class="meta" style="line-height:1.9">پنل جای آپلود عکس ندارد — اسکرین‌شات‌ها را اینجا نمی‌فرستی. اسکرین هر قدم را برای Muse در چت ادمین بفرست، و نتیجهٔ آن قدم را در کادر زیر بنویس تا در توضیح همین کار ثبت شود.</p>' +
+    '<p class="meta" style="line-height:1.9">پنل جای آپلود عکس ندارد. قدم‌های داخل پنل اصلاً اسکرین لازم ندارند — انجامشان را از روی همان برگه می‌بینی (وضعیت عوض می‌شود، گام تیک می‌خورد، نتیجه ثبت می‌شود). فقط اگر قدمی بیرون از پنل بود (مثلاً ربات تلگرام یا سایتی دیگر) و خواستی مدرکش را نشان بدهی، همان یک اسکرین را برای Muse در چت ادمین بفرست؛ نتیجهٔ هر قدم را هم در کادر زیر بنویس تا در توضیح همین کار ثبت شود.</p>' +
     '<textarea id="stepResultText" placeholder="نتیجه این قدم را بنویس…" style="min-height:70px"></textarea>' +
     '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="saveStepResult('+t.id+',this)">ثبت نتیجهٔ قدم</button>' +
     '<div class="row" style="margin-top:16px"><button class="btn-teal" style="flex:1" onclick="openTaskEdit('+t.id+')">✏️ ویرایش</button>' +
