@@ -1034,7 +1034,7 @@ function homeTaskCard(t, showMethods){
   const methodsBtn = '<button class="btn-ghost btn-sm" onclick="openTaskView('+t.id+')">راهنمای انجام ←</button>';
   return '<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="flex:1;min-width:0"><b style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</b>' +
     '<div class="meta" style="margin-top:4px">'+esc(t.category || 'نامشخص')+' · '+esc(ASSIGNEE[t.assignee] || t.assignee)+' · '+dueLabel+'</div></div>' + methodsBtn + '</div>' +
-    '<div style="margin-top:6px"><b>هدف:</b> ' + esc(tailoredGuideFor({ title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee }).goal) + '</div>' +
+    '<div style="margin-top:6px">' + (function(){ var tt = { title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee }; var pl = guidePlain(tt); return pl ? '<b>یعنی چی:</b> ' + esc(pl) : '<b>هدف:</b> ' + esc(tailoredGuideFor(tt).goal); })() + '</div>' +
     (steps ? '<div style="margin-top:8px"><b>To Do</b>' + steps + '</div>' : '<div class="meta" style="margin-top:8px">هنوز گامی نیست — برگهٔ کار را باز کن و «ساختن گام‌ها از راهنما» را بزن.</div>') + '</div>';
 }
 function toggleHomeClamp(id, btn){
@@ -1769,9 +1769,25 @@ function tailoredGuideFor(t){
   steps.push({ where: here, link: null, action: 'نتیجه را در توضیح کار بنویس و کار را تمام‌شده بزن', expect: null });
   return { goal: title, note: urlMatch || firstLine ? null : 'این کار بخش قابل سرچی ندارد؛ قدم‌های بالا همان انجامِ مستقیمِ کار است.', steps: steps };
 }
+// Fix10: one plain-language sentence first for technical/jargon tasks.
+// #14 ('پیوند توضیح کار به شناسه کار') has a known plain meaning from
+// the panel's own history (notes matched by title prefix); anything else
+// jargon-y that cannot be stated plainly gets the explicit fallback,
+// never invented jargon.
+function guidePlain(t){
+  const txt = ((t.title || '') + ' ' + (t.category || '') + ' ' + (t.detail || ''));
+  if (txt.indexOf('پیوند توضیح') >= 0 || txt.indexOf('شناسه کار') >= 0 || txt.indexOf('پیوند کار') >= 0)
+    return 'الان اگر دو کار هم‌نام داشته باشی، توضیح اولی برای دومی هم نشان داده می‌شود؛ این کار آن را درست می‌کند تا هر توضیح فقط به کار خودش وصل شود.';
+  try { if (typeof homeIsAwaiting === 'function' && homeIsAwaiting(t)) return homeAwaitingPlain(t); } catch(e){}
+  const jargon = ['دیتابیس', 'پایگاه داده', 'اسنپ‌شات', 'snapshot', 'ای‌پی‌آی', 'endpoint', 'مایگریشن', 'اسکیما', 'بک‌اند'];
+  if (jargon.some(w => txt.indexOf(w) >= 0))
+    return 'معنی این کار از توضیحش مشخص نیست؛ توضیح را در صفحهٔ کار ببین';
+  return null;
+}
 function tailoredGuideHtml(t){
   const g = tailoredGuideFor(t);
-  let html = '<div class="method-card"><div style="line-height:1.8"><b>هدف:</b> ' + esc(g.goal) + '</div>';
+  const plain = guidePlain(t);
+  let html = '<div class="method-card">' + (plain ? '<div style="line-height:1.9;margin-bottom:6px">💡 ' + esc(plain) + '</div>' : '') + '<div style="line-height:1.8"><b>هدف:</b> ' + esc(g.goal) + '</div>';
   if (g.note) html += '<div class="meta" style="margin-top:4px">' + esc(g.note) + '</div>';
   html += '<ol style="line-height:1.9;margin:10px 0 0;padding-right:20px">' + g.steps.map(s => {
     const where = s.link ? '<a href="' + esc(s.link) + '" target="_blank" rel="noopener">' + esc(s.where) + '</a>' : esc(s.where);
@@ -1788,6 +1804,33 @@ function openTaskView(id){
   const t = S.todos.find(x=>x.id===id); if (!t) return;
   TV = { id: t.id };
   renderTaskView();
+}
+// Fix10: the old view-sheet status button ran updateTodo() (async) and
+// closeSheet() in the same tick, so the sheet vanished before the save
+// finished and the user never saw the new status — it looked dead.
+// This handler awaits the server save, then re-renders the SAME view
+// sheet, so the button visibly becomes the next action ('تمام شد').
+async function startTaskView(id, btn){
+  const t = S.todos.find(x=>x.id===id); if (!t) return;
+  const next = NEXT_STATUS[t.status];
+  if (btn) { btn.disabled = true; btn.textContent = 'در حال انجام…'; }
+  try { await call('updateTodo', { id: id, status: next }); await refresh(); openTaskView(id); }
+  catch(e){ showErr(e.message); if (btn) { btn.disabled = false; btn.textContent = NEXT_LABEL[t.status]; } }
+}
+async function saveStepResult(todoId, btn){
+  const el = document.getElementById('stepResultText'); const text = el ? el.value.trim() : '';
+  if (!text) return showErr('نتیجهٔ قدم را اول بنویس');
+  const t = S.todos.find(x=>x.id===todoId); if (!t) return;
+  const cur = taskDetail(t);
+  const newDetail = (cur ? cur + '\n' : '') + 'نتیجهٔ قدم: ' + text;
+  const note = taskDetailNote(t);
+  const fullText = '📋 جزئیات تسک «' + t.title + '»:\n' + newDetail;
+  try {
+    if (btn) btn.disabled = true;
+    if (note) await call('updateNote', { id: note.id, text: fullText });
+    else await call('addNote', { text: fullText });
+    await refresh(); openTaskView(todoId);
+  } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
 }
 function renderTaskView(){
   if (!TV) return;
@@ -1806,8 +1849,12 @@ function renderTaskView(){
     (det ? '<div style="line-height:1.9">'+guideListHtml(det)+'</div>' : '<p class="meta">توضیحی نوشته نشده.</p>') +
     '<h2>گام‌ها</h2>' + stepsHtml +
     '<h2 style="margin-top:16px">راهنمای انجام</h2>' + guideHtml + guideStepsBtn +
+    '<h2 style="margin-top:16px">اسکرین‌شات قدم‌ها</h2>' +
+    '<p class="meta" style="line-height:1.9">پنل جای آپلود عکس ندارد — اسکرین‌شات‌ها را اینجا نمی‌فرستی. اسکرین هر قدم را برای Muse در چت ادمین بفرست، و نتیجهٔ آن قدم را در کادر زیر بنویس تا در توضیح همین کار ثبت شود.</p>' +
+    '<textarea id="stepResultText" placeholder="نتیجه این قدم را بنویس…" style="min-height:70px"></textarea>' +
+    '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="saveStepResult('+t.id+',this)">ثبت نتیجهٔ قدم</button>' +
     '<div class="row" style="margin-top:16px"><button class="btn-teal" style="flex:1" onclick="openTaskEdit('+t.id+')">✏️ ویرایش</button>' +
-    '<button class="btn-ghost" style="flex:1" onclick="updateTodo('+t.id+',NEXT_STATUS[t.status]);closeSheet()">'+NEXT_LABEL[t.status]+'</button>' +
+    '<button class="btn-ghost" style="flex:1" onclick="startTaskView('+t.id+',this)">'+NEXT_LABEL[t.status]+'</button>' +
     '<button class="btn-ghost" style="flex:1" onclick="TV=null;closeSheet()">بستن</button></div>'
   );
 }
