@@ -1825,10 +1825,10 @@ function tailoredGuideFor(t){
     // Fix13 staged: one page at a time (find + deliver + Muse confirms),
     // never all pages at once; the old 'write two lists in the task
     // description' delivery step is gone (see fix12 delivery wording).
-    return { goal: 'پیدا کردن مدل‌های لوگو: ' + title, note: STAGE_NOTE, staged: true, steps:
+    return { goal: 'چیدمان لوگو: ' + title, note: STAGE_NOTE, staged: true, steps:
       STAGE_ORDER.map((cat, i) => stageStep(i + 1, PAGE_SEARCH_PHRASES[cat], 'پینترست', NETWORK_LINKS['پینترست'],
-        'سرچ کن: «minimal logotype design»، «modern logo mark vector»، «persian typography logo» و ۵ مدل گرافیک + ۵ مدل تایپوگرافی هم‌سبک را ذخیره کن'))
-      .concat([stageFinalStep(here)]) , museNext: 'میوز مدل‌های آپلودشدهٔ هر پیج را با وکتورهای نگین کنار هم می‌چیند و برای هر پیج، ترکیب «این وکتور + این استایل» را پیشنهاد می‌دهد؛ تو فقط مدل‌ها را پیدا و آپلود می‌کنی، چیدمان با میوز است.' };
+        'سرچ کن: «minimal logotype design»، «modern logo mark vector»، «persian typography logo» و برای هر پیج، سبک‌های چیدمان وکتور را ببین: فقط نماد، نماد + نوشته زیرش، نماد + نوشته کنارش، فقط نوشته، مونوگرام در دایره، نماد در قاب — هر سبک را در قاب پروفایل و کاور بسنج و ذخیره کن'))
+      .concat([stageFinalStep(here)]) , museNext: 'میوز سبک‌های چیدمان آپلودشدهٔ هر پیج را با وکتورهای نگین کنار هم می‌چیند و برای هر پیج، بهترین چیدمان را با دلیل پیشنهاد می‌دهد؛ تو فقط سبک‌ها را پیدا و آپلود می‌کنی، چیدمان نهایی با میوز است.' };
   }
   if (has('ترکیبی', 'انتخاب ترکیبی')) {
     // Fix13 staged: one combination per page, confirmed by Muse, in order.
@@ -1951,9 +1951,28 @@ function museProposalsHtml(t){
     else if (txt.indexOf('همکار') >= 0 || txt.indexOf('hamkar') >= 0) logoKey = 'همکار';
     const lf = logoFrames[logoKey];
     const logoNote = pg ? '' : ' اول همین پیج است؛ بعد از تأیید، پیشنهاد پیج بعدی می‌آید.';
+    if (has('لوگوگرافیک', 'تایپوگرافی')) {
+      // Fix18: #35 is LAYOUT styles, not '۵ مدل گرافیک + ۵ مدل
+      // تایپوگرافی' as separate counts. Six composition styles, each
+      // in a profile/cover frame with one short when-it-works line.
+      const layoutStyles = [
+        ['فقط نماد', 'تمیزترین در آواتار کوچک'],
+        ['نماد + نوشته زیرش', 'رسمی و متعادل'],
+        ['نماد + نوشته کنارش', 'برای کاور و هدر'],
+        ['فقط نوشته', 'وقتی اسم خودش لوگوست'],
+        ['مونوگرام در دایره', 'در آواتار گرد بهترین'],
+        ['نماد در قاب', 'حس مهر و نشان']
+      ];
+      blocks.push('<div style="line-height:1.9"><b>سبک‌های چیدمان لوگو — هر سبک را در قاب پروفایل و کاور ببین:</b></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">' + layoutStyles.map(function(ls){
+          return '<div style="border:1px solid #ddd;border-radius:12px;overflow:hidden"><div style="background:' + lf[0] + ';color:' + lf[1] + ';padding:10px;text-align:center"><div style="width:40px;height:40px;border-radius:50%;border:2px solid ' + lf[2] + ';margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:18px">' + lf[3] + '</div><b style="font-size:12px">' + lf[4] + '</b></div><div style="padding:8px;font-size:12px;line-height:1.8"><b>' + ls[0] + '</b><br><span class="meta">' + ls[1] + '</span></div></div>';
+        }).join('') + '</div>' +
+        '<div style="line-height:1.9;margin-top:6px">چیدمان آمادهٔ میوز برای ' + esc(pgName) + ': ' + lf[5] + logoNote + '</div>');
+    } else {
     blocks.push('<div style="line-height:1.9"><b>ترکیب آمادهٔ لوگو — در قاب پروفایل و کاور ببینش:</b></div>' +
       '<div style="border-radius:12px;overflow:hidden;border:1px solid #ddd;margin-top:6px"><div style="background:' + lf[0] + ';color:' + lf[1] + ';padding:12px;text-align:center"><div style="width:52px;height:52px;border-radius:50%;border:2px solid ' + lf[2] + ';margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:24px">' + lf[3] + '</div><b>' + lf[4] + '</b><div style="font-size:12px;opacity:.85;margin-top:4px">کاور همین ترکیب — همان رنگ، همان حس</div></div><div style="padding:10px;font-size:13px;line-height:1.9">' + lf[5] + logoNote + '</div></div>' +
       '<div class="meta">پانویس اجرا: سرمه‌ای #1a1a2e، فیروزه‌ای #2dd4bf، نارنجی #f59e0b، عنابی #36000B، طلایی #d4af37.</div>');
+    }
   }
   if (has('رنگ', 'تم رنگی', 'پالت')) {
     blocks.push('<div style="line-height:1.9"><b>طیف پیشنهادی میوز — با چشم انتخاب کن:</b></div>' +
@@ -2188,10 +2207,12 @@ function stageKindFor(goal){
   const g = String(goal || '');
   if (g.indexOf('هندل') >= 0) return 'handle';
   if (g.indexOf('ترکیب') >= 0) return 'combo';
+  if (g.indexOf('چیدمان') >= 0) return 'layout';
   if (g.indexOf('مدل') >= 0) return 'models';
   return 'search';
 }
 function stageTermsFor(kind, cat){
+  if (kind === 'layout') return ['minimal logotype design', 'modern logo mark vector', 'persian typography logo'];
   if (kind === 'models') return ['minimal logotype design', 'modern logo mark vector', 'persian typography logo'];
   if (kind === 'combo') return ['ترکیب: وکتور نهایی نگین + استایل نهایی امیر'];
   if (kind === 'handle') return cat === 'شاهنامه' ? ['pretimetv، بعد pretime، بعد pre.time'] : ['هندل هم‌نام شبکه‌های دیگر همین پیج'];
@@ -2200,6 +2221,7 @@ function stageTermsFor(kind, cat){
 function stageShortLine(kind, cat){
   const page = PAGE_SEARCH_PHRASES[cat].page;
   if (kind === 'combo') return 'پیج ' + page + ': ترکیب وکتور + استایل → ترکیب را در یادداشت همین مرحله بنویس → صبر کن تا میوز تأیید کنه';
+  if (kind === 'layout') return 'پیج ' + page + ': سبک‌های چیدمان را ببین → لینک بورد رو تو فیلد همین مرحله بذار + فایل‌ها رو تو 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه';
   if (kind === 'handle') return 'پیج ' + page + ': هندل را امتحان کن → نتیجه را در یادداشت همین مرحله بنویس → صبر کن تا میوز تأیید کنه';
   return 'پیج ' + page + ': سرچ‌ها → لینک بورد رو تو فیلد همین مرحله بذار + فایل‌ها رو تو 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه';
 }
@@ -2306,6 +2328,7 @@ function stageInnerItems(kind, parsed, ticked){
   ];
 }
 function stageProposalHeadline(cat, kind){
+  if (kind === 'layout') return 'سبک‌های چیدمان: فقط نماد تا مونوگرام در دایره';
   if (kind === 'handle') return cat === 'شاهنامه' ? 'هندل‌های پیشنهادی: pretimetv، بعد pretime' : 'هندل هم‌نام شبکه‌های دیگر همین پیج';
   if (kind === 'combo') return 'ترکیب آماده: وکتور نهایی + استایل نهایی';
   const m = { 'روانشناسی': 'مغز خطی + قفل بازشونده', 'شاهنامه': 'سیمرغ + مینیاتور طلایی', 'شده دیگه': 'چهرهٔ دودل ساده + خط شوخ', 'گربه‌ها': 'گربهٔ خطی + پنجه', 'همکار': 'ویترین خطی + آدمک دو نفره' };
@@ -2314,9 +2337,11 @@ function stageProposalHeadline(cat, kind){
 function stageMuseHelp(kind){
   if (kind === 'combo') return 'بعد از نوشتن ترکیب تو، میوز آن را با دلیل نهایی می‌کند و بعد از تأیید تو، پیج بعدی باز می‌شود.';
   if (kind === 'handle') return 'بعد از نوشتن نتیجه، میوز هندل نهایی را ثبت می‌کند و در جدول کانال‌ها می‌گذارد.';
+  if (kind === 'layout') return 'بعد از تحویل تو، میوز سبک‌های چیدمان را کنار وکتورهای نگین می‌چیند، بهترین چیدمان این پیج را با دلیل می‌گوید و بعد از تأیید تو سراغ پیج بعدی می‌رود.';
   return 'بعد از تحویل تو، میوز مدل‌ها را کنار هم می‌چیند، با دلیل ترکیب نهایی این پیج را می‌گوید و بعد از تأیید تو سراغ پیج بعدی می‌رود.';
 }
 function stageManualLine(kind){
+  if (kind === 'layout') return 'در پینترست با عبارت‌های زیر سرچ کن، سبک‌های چیدمان را در قاب پروفایل و کاور بسنج، بورد بساز، لینکش را در فیلد همین کارت بذار و فایل‌ها را همین‌جا آپلود کن.';
   if (kind === 'combo') return 'وکتور نهایی نگین و استایل نهایی امیر را کنار هم بگذار و ترکیب را در یادداشت همین کارت بنویس.';
   if (kind === 'handle') return 'در آپارات هندل‌ها را به ترتیب امتحان کن و نتیجه را در یادداشت همین کارت بنویس.';
   return 'در پینترست با عبارت‌های زیر سرچ کن، بورد بساز، لینکش را در فیلد همین کارت بذار و فایل‌ها را همین‌جا آپلود کن.';
@@ -2339,6 +2364,10 @@ function digitsToLatin(s){
 // => 10 مدل). Nothing else is a target: no target => null, and the card
 // shows the stage count only. Never invent a target.
 function stageTargetFor(tt, kind){
+  // Fix18: layout styles have no count target — never parse a stale
+  // '۵ مدل' from the task text into one. Stage count only, until the
+  // task text itself is corrected to name the layout styles.
+  if (kind === 'layout') return null;
   const txt = ((tt.title || '') + ' ' + (tt.detail || ''));
   const vec = txt.match(/([۰-۹٠-٩0-9]+)\s*وکتور/);
   if (vec) return { n: parseInt(digitsToLatin(vec[1]), 10), unit: 'وکتور' };
@@ -2363,6 +2392,7 @@ function stageProposalsHtml(t, cat){
 // itself — one thing, at this moment, naming exactly where it goes
 // (stage link field / stage 📎 upload / stage note field), never vague.
 function stageAskLine(kind){
+  if (kind === 'layout') return 'الان فقط این یک کار را بکن: سبک‌های چیدمان این پیج را پیدا کن، لینک بورد را در فیلد «لینک بورد این پیج» بذار و فایل‌ها را با دکمهٔ «آپلود برای همین مرحله» همین‌جا آپلود کن.';
   if (kind === 'combo') return 'الان فقط این یک کار را بکن: ترکیب «این وکتور + این استایل» را در یادداشت همین مرحله بنویس.';
   if (kind === 'handle') return 'الان فقط این یک کار را بکن: هندل را امتحان کن و نتیجه را در یادداشت همین مرحله بنویس.';
   return 'الان فقط این یک کار را بکن: با عبارت‌های زیر سرچ کن، لینک بورد این پیج را در فیلد «لینک بورد این پیج» بذار و فایل‌ها را با دکمهٔ «آپلود برای همین مرحله» همین‌جا آپلود کن.';
@@ -2375,7 +2405,8 @@ function stageFilesHtml(todoId, parsed){
     return '<div style="line-height:1.9">📎 ' + esc(fn) + (a ? ' <button class="btn-ghost btn-sm" onclick="openAttachment(' + a.id + ')">باز کردن</button>' : ' <span class="meta">(در بخش 📎 پیدا نشد — شاید حذف شده)</span>') + '</div>';
   }).join('') + '</div>';
 }
-function stageCardsHtml(t){
+function stageCardsHtml(t, opts){
+  const bare = !!(opts && opts.bare);
   const tt = { title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee };
   if (!isStagedTask(tt)) return '';
   const g = tailoredGuideFor(tt);
@@ -2387,8 +2418,11 @@ function stageCardsHtml(t){
   const curIdx = tickedArr.indexOf(false);
   const allDone = doneCount === STAGE_ORDER.length;
   const curLabel = allDone ? 5 : curIdx + 1;
-  let html = '<h2 style="margin-top:16px">مرحله‌های این کار — هر کارت یک To Do برای یک پیج است</h2>';
-  html += '<div class="meta" style="line-height:1.9">مرحلهٔ ' + curLabel + ' از ۵ — ' + doneCount + ' تأیید شده. کارت هر پیج را باز کن: پیشنهادها همان‌جاست، حتی اگر گام مرحله‌ای ساخته نشده باشد.</div>';
+  let html = '';
+  if (!bare) {
+    html += '<h2 style="margin-top:16px">مرحله‌های این کار — هر کارت یک To Do برای یک پیج است</h2>';
+    html += '<div class="meta" style="line-height:1.9">مرحلهٔ ' + curLabel + ' از ۵ — ' + doneCount + ' تأیید شده. کارت هر پیج را باز کن: پیشنهادها همان‌جاست، حتی اگر گام مرحله‌ای ساخته نشده باشد.</div>';
+  }
   if (!steps.length) {
     html += '<p class="meta" style="line-height:1.9">گام مرحله‌ای هنوز ساخته نشده — ولی کارت‌ها کامل کار می‌کنند و تحویل‌ها با برچسب مرحله ذخیره می‌شوند. ساختن گام‌ها فقط برای انتقال به گام‌هاست، نه پیش‌نیاز.</p><button class="btn-teal btn-sm" style="margin-top:8px" onclick="ensureStageSteps(' + t.id + ',this)">ساختن گام‌های مرحله‌ای (اختیاری)</button>';
   }
@@ -2439,11 +2473,46 @@ function stageCardsHtml(t){
         '<div class="row" style="gap:8px;margin-top:8px"><input type="file" id="stageFileInput-' + i + '" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style="flex:1;min-width:0"><button class="btn-teal btn-sm" onclick="uploadStageFile(' + t.id + ',' + i + ',this)">⬆️ آپلود برای همین مرحله</button></div>' +
         '<div id="stageUploadStatus-' + i + '" class="meta" style="margin-top:6px"></div>' + museNoteLine + otherHtml + feedbackHtml + checklistHtml;
     }
-    return '<details class="card" ' + (isCur ? 'open' : '') + ' style="margin-bottom:10px"><summary style="line-height:1.9;cursor:pointer"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">' + status + '</span> <span class="meta">' + innerDone + ' از ' + items.length + ' ✓</span><br><span class="meta">💡 ' + esc(stageProposalHeadline(cat, kind)) + '</span></summary><div style="margin-top:8px">' + body + '</div></details>';
+    return '<details class="card" ' + (isCur ? 'open' : '') + ' style="margin-bottom:10px"><summary style="line-height:1.9;cursor:pointer"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">' + status + '</span> <span class="meta">' + innerDone + ' از ' + items.length + ' ✓</span></summary><div style="margin-top:8px">' + body + '</div></details>';
   }).join('');
   return html;
 }
 
+
+// ---------- Fix18: nested cards + #35 layout correction ----------
+// WHY (user, live fix17 phone screenshots): the structure was right
+// but the presentation was linear, repetitive and ugly — sections
+// were not carded/interactive. WHAT CHANGED (frontend only):
+// - The task view sheet for a staged task now shows ONE main card
+//   (the task title + 'X از ۵ پیج ✓' progress) that opens into the 5
+//   page cards. The old linear staged-guide prose (guideSection) and
+//   the separate 'گام‌ها' steps list are NOT rendered alongside the
+//   cards in the view sheet any more — the cards replace them (see
+//   renderTaskView: stagedView branch). The edit sheet still shows
+//   the guide; it is an editing surface, not the working surface.
+// - Collapsed page card = page name + status pill + inner count
+//   only (the proposal headline line was removed from summaries;
+//   proposals live inside the expanded card).
+// - #35 CORRECTION: 'تایپوگرافی/لوگوگرافی' was misnamed. What the
+//   user wants is LAYOUT/COMPOSITION styles for the vectors — icon
+//   only, icon + wordmark below, icon + wordmark beside, wordmark
+//   only, monogram in a circle, icon in a frame — each in a profile/
+//   cover frame with one short when-it-works line. The guide goal is
+//   now 'چیدمان لوگو' (kind 'layout'), the proposals block renders
+//   those six styles instead of the generic frame, and stageTargetFor
+//   returns null for layout: NO count is parsed from stale task text
+//   ('۵ مدل' etc.) — the card shows the stage count only until the
+//   task text itself is corrected. The old 'models' kind and its
+//   target parsing are untouched for any other task that uses them.
+// - Closing a page card re-renders on the next tick/save, so the
+//   main card's progress line follows the ticks (render-time count,
+//   same mechanism as fix17's header line).
+function nestedStageCardsHtml(t){
+  const doneCount = STAGE_ORDER.map(function(cat, i){ return stageTicked(t.id, i); }).filter(Boolean).length;
+  const allDone = doneCount === STAGE_ORDER.length;
+  const summary = '<b>📦 ' + esc(t.title) + '</b> <span class="chip" style="font-size:.75rem">' + doneCount + ' از ۵ پیج ✓</span>' + (allDone ? ' <span>✅ کامل شد</span>' : '') + '<br><span class="meta">هر پیج یک کارت جدا دارد — کارت پیج را باز کن</span>';
+  return '<details class="card" open style="margin-top:16px"><summary style="line-height:1.9;cursor:pointer">' + summary + '</summary><div style="margin-top:8px">' + stageCardsHtml(t, { bare: true }) + '</div></details>';
+}
 
 async function saveStageLink(todoId, stageIdx, btn){
   const el = document.getElementById('stageLinkInput-' + stageIdx);
@@ -2740,6 +2809,9 @@ function renderTaskView(){
   const steps = stepsFor(t.id);
   const det = taskDetail(t);
   const dateLabel = t.deadline ? fmtStoredDate(t.deadline) : 'بدون مهلت';
+  // Fix18: staged tasks work inside the nested main card only — the
+  // linear guide prose and the separate steps list are replaced by it.
+  const stagedView = isStagedTask({ title: t.title, category: t.category, detail: det, id: t.id, assignee: t.assignee });
   const stepsHtml = steps.length
     ? '<div class="sub-list">' + steps.map(x=>'<div class="sub-step'+(x.done?' done':'')+'"><input type="checkbox" '+(x.done?'checked':'')+' onchange="toggleViewStep('+t.id+','+x.id+',this.checked)"><div style="flex:1;min-width:0"><div class="sub-title">'+esc(x.text)+'</div></div></div>').join('') + '</div>'
     : '<p class="meta">هنوز گامی نیست — دکمهٔ «ساختن گام‌ها از راهنما» پایین را بزن تا گام‌های راهنما ساخته شوند.</p>';
@@ -2757,9 +2829,7 @@ function renderTaskView(){
     '<h2 style="margin-top:0">'+esc(t.title)+'</h2>' +
     '<div class="meta" style="margin-bottom:12px">شناسه #'+t.id+(t.created_at ? ' · ساخته‌شده ' + fmtCreated(t.created_at) : '')+' · '+esc(t.category || 'نامشخص')+' · '+esc(ASSIGNEE[t.assignee] || t.assignee)+' · '+esc(STATUS[t.status])+' · مهلت: '+dateLabel+'</div>' +
     (det ? '<div style="line-height:1.9">'+guideListHtml(det)+'</div>' : '<p class="meta">توضیحی نوشته نشده.</p>') +
-    '<h2>گام‌ها</h2>' + stepsHtml +
-    guideSection +
-    stageCardsHtml(t) +
+    (stagedView ? nestedStageCardsHtml(t) : ('<h2>گام‌ها</h2>' + stepsHtml + guideSection + stageCardsHtml(t))) +
     attachmentsHtml(t.id) +
     '<h2 style="margin-top:16px">اسکرین‌شات قدم‌ها</h2>' +
     '<p class="meta" style="line-height:1.9">کادر زیر فقط برای یک یادداشت یک‌خطی است (مثلاً «مدل‌ها پیدا شد») و برای نتیجه‌های متنی مثل هندل و نام؛ خودِ فایل‌ها در بخش 📎 همین برگه آپلود می‌شوند — همان‌جاست که میوز می‌بیندشان. قدم‌های داخل پنل اسکرین لازم ندارند؛ انجامشان را از روی همان برگه می‌بینی.</p>' +
