@@ -98,6 +98,7 @@
   .cal-grid .sel { outline:2px solid var(--teal); }
   .cal-grid .empty { visibility:hidden; }
   .cal-dot { width:5px; height:5px; border-radius:50%; background:var(--teal); margin-top:2px; }
+  .cal-occ { color:var(--orange); font-size:.7rem; line-height:1; margin-top:1px; }
   .center { text-align:center; padding:40px 16px; color:var(--mut); }
   .err { background:var(--dangerbg); color:#dc2626; padding:12px; border-radius:12px; margin-bottom:12px; font-size:.88rem; }
   .stage { display:inline-block; font-size:.74rem; padding:2px 9px; border-radius:999px; background:var(--tagteal); color:var(--teal); margin-inline-start:6px; }
@@ -240,9 +241,9 @@
         </div>
         <div class="row" style="margin-top:10px"><button class="btn-teal btn-sm" onclick="jumpToday()">📍 امروز</button><span class="meta">نقطه یعنی آن روز کار یا گزارش دارد.</span></div>
         <div class="cal-grid" id="calGrid" style="margin-top:10px"></div>
-        <div class="meta" style="margin-top:8px">راهنما: حاشیه نارنجی = امروز، حاشیه فیروزه‌ای = روز انتخاب‌شده، نقطه = آن روز کار یا گزارش دارد.</div>
+        <div class="meta" style="margin-top:8px">راهنما: حاشیه نارنجی = امروز، حاشیه فیروزه‌ای = روز انتخاب‌شده، نقطه = آن روز کار یا گزارش دارد، ✦ = مناسبت.</div>
       </div>
-      <h2>کارها و گزارش‌های روز انتخاب‌شده</h2><div id="dayBox"></div>
+      <h2>کارها و گزارش‌های روز انتخاب‌شده</h2><div id="dayBox"></div><div id="occasionBox"></div><div id="publishSlotsBox"></div>
       <div class="card">
         <div class="row" style="justify-content:space-between"><b>برنامهٔ روز / هفته</b><span><button class="btn-ghost btn-sm" onclick="setAgenda('day')">امروز</button> <button class="btn-ghost btn-sm" onclick="setAgenda('week')">۷ روز آینده</button></span></div>
         <div id="agendaBox" style="margin-top:8px"></div>
@@ -937,6 +938,26 @@ async function importLocalSteps(){
   if (anyImported) await refresh();
 }
 
+// ---------- Fix4: sequential task gating ----------
+// Default Tasks view is sequential: only the first open task is shown
+// in full; the rest are a collapsed, dimmed title list. The user can
+// override to the full list manually; that choice persists per device.
+// Order is panel ID ascending (creation order) — the imported review
+// tasks #6-#33 were created in phase order, so ID order IS the order.
+// No new backend field, no data hidden or deleted.
+function seqModeOn(){ try { return localStorage.getItem('panelSeqMode') !== '0'; } catch(e) { return true; } }
+function setSeqMode(v){ try { localStorage.setItem('panelSeqMode', v ? '1' : '0'); } catch(e) {} renderTasks(); }
+function seqFirstOpenTask(){
+  if (!S) return null;
+  const me = mePerson();
+  const open = S.todos.filter(t=>t.status !== 'done' && (t.assignee === me || t.assignee === 'both'));
+  open.sort((a,b)=>Number(a.id) - Number(b.id));
+  return open.length ? open[0] : null;
+}
+function seqOpenTasksSorted(list){
+  return list.filter(t=>t.status !== 'done').slice().sort((a,b)=>Number(a.id) - Number(b.id));
+}
+
 // ---------- Fix3: Home personalised action dashboard ----------
 // The logged-in user is identified exactly like mePerson() does:
 // amirmajidi1375@gmail.com (or tgId 94731359) = Amir, anyone else = Negin.
@@ -1017,7 +1038,10 @@ function homeTaskCard(t, showMethods){
 }
 function renderHomeDash(){
   const el = document.getElementById('homeDash'); if (!el || !S) return;
-  const mine = homeUrgencySort(homeMyOpenTasks());
+  // Fix4: Home 'قدم بعدی' uses the exact same first-open-task logic as
+  // sequential Tasks (ID ascending, assignee = me or both, not done),
+  // so Home and Tasks always agree on what is next.
+  const mine = seqOpenTasksSorted(homeMyOpenTasks());
   const name = homeMeName();
   if (!mine.length) {
     el.innerHTML = '<div class="card"><b>سلام '+esc(name)+' 👋</b><div style="margin-top:8px">کاری نداری 🎉</div>' +
@@ -1039,7 +1063,7 @@ function renderHomeDash(){
   nextHtml += (steps ? '<div style="margin-top:10px"><b>To Do</b>' + steps + '</div>' : (isAccount ? '' : '<div class="meta" style="margin-top:10px">هنوز گامی نیست — از برگهٔ کار، «تحلیل روش‌های انجام» را بزن تا گام‌هایش ساخته شوند.</div>'));
   nextHtml += '<button class="btn-ghost btn-sm" style="margin-top:10px" onclick="openTaskSheet('+next.id+')">باز کردن برگهٔ کار</button></div>';
   const rest = mine.slice(1);
-  el.innerHTML = '<div class="card" style="background:var(--bg2,transparent)"><b>سلام '+esc(name)+' 👋</b><div class="meta" style="margin-top:4px">کارهای باز تو: '+toFaDigits(mine.length)+' کار (خودت + «هر دو»)، به ترتیب فوریت.</div></div>' +
+  el.innerHTML = '<div class="card" style="background:var(--bg2,transparent)"><b>سلام '+esc(name)+' 👋</b><div class="meta" style="margin-top:4px">کارهای باز تو: '+toFaDigits(mine.length)+' کار (خودت + «هر دو»)، به ترتیب ساخت — همان ترتیبی که در حالت مرحله‌ای کارها دیده می‌شود.</div></div>' +
     '<h2>قدم بعدی</h2>' + nextHtml +
     (rest.length ? '<h2>کارهای امروز تو</h2>' + rest.map(t=>homeTaskCard(t, false)).join('') : '');
 }
@@ -1087,8 +1111,8 @@ function renderDash(){
     '<div class="card"><b>کارها بر اساس وضعیت</b>' + barChart(['در صف','در حال انجام','انجام‌شده'], ['queued','in_progress','done'].map(s=>S.todos.filter(t=>t.status===s).length), '#f59e0b') + '</div>';
 }
 async function approveUser(userId){ try { await call('approveUser', {userId}); await refresh(); } catch(e){ showErr(e.message); } }
-function goTasksPerson(who){ taskFilter = { person:who, due:'all', cat:'all', status:'all' }; taskView = 'list'; showScreen('tasks'); renderTasks(); }
-function goTasksFilter(patch){ taskFilter = Object.assign({ person:'all', due:'all', cat:'all', status:'all' }, patch); taskView = 'list'; showScreen('tasks'); renderTasks(); }
+function goTasksPerson(who){ taskFilter = { person:who, due:'all', cat:'all', status:'all' }; taskView = 'list'; try { localStorage.setItem('panelSeqMode', '0'); } catch(e) {} showScreen('tasks'); renderTasks(); }
+function goTasksFilter(patch){ taskFilter = Object.assign({ person:'all', due:'all', cat:'all', status:'all' }, patch); taskView = 'list'; try { localStorage.setItem('panelSeqMode', '0'); } catch(e) {} showScreen('tasks'); renderTasks(); }
 function clearTaskFilters(){ taskFilter = { person:'all', due:'all', cat:'all', status:'all' }; renderTaskChips(); renderTasks(); }
 
 // ---------- Calendar ----------
@@ -1105,6 +1129,109 @@ function moveMonth(d){
   }
   calCursor = x; selDay = null; renderCal();
 }
+
+// ---------- Fix4b: calendar occasions (yearly recurring, Jalali) ----------
+// Only occasions that actually suggest content for at least one of his
+// 5 pages are listed. Dates are Jalali month/day, recurring every year.
+// Gregorian-fixed days are labelled by BOTH dates: 8 Aug = 17 Mordad and
+// 10 Oct = 18 Mehr in 1405 (Mordad = 23 Jul-22 Aug, Mehr = 23 Sep-22 Oct);
+// the Gregorian date is the fixed one, the Jalali day can shift by a day
+// in a leap year, so the Gregorian label is shown alongside.
+// Chaharshanbe Suri has NO fixed Jalali day: it is the last Tuesday of
+// Esfand, computed per year (see occasionForDay special case).
+// Lunar occasions (Ramadan, Eid al-Fitr, Eid al-Adha) are NOT given a
+// fixed Jalali day here: their date moves yearly and must be checked
+// each year — see the note in occasionCardHtml.
+const OCCASIONS = [
+  { id:'nowruz', name:'نوروز', month:1, day:1, summary:'آغاز سال نو؛ در شاهنامه، جشن جمشید و تاج‌گذاری اوست.',
+    pages:{ 'شاهنامه':'قصهٔ جمشید و پیدایش نوروز — ریشهٔ جشن در شاهنامه.', 'شده دیگه':'آماده‌سازی عید و مهمان‌های نوروزی، به زبان روزمره.', 'گربه‌ها':'گربه‌ها دور سفرهٔ هفت‌سین — بدون خوردن سبزه و گل.', 'روانشناسی':'شروع تازه بدون شعار: یک عادت کوچک که واقعاً می‌ماند.' } },
+  { id:'sizdah', name:'سیزده‌به‌در', month:1, day:13, summary:'روز سیزدهم فروردین و بیرون‌رفتن در طبیعت.',
+    pages:{ 'شاهنامه':'طبیعت و بیرون‌رفتن در قصه‌های کهن؛ روزِ بیرون از خانه.', 'شده دیگه':'سیزده‌به‌در خانوادگی — همان صحنه‌های آشنای پیک‌نیک.', 'گربه‌ها':'گربه‌ها در حیاط و طبیعت.', 'روانشناسی':'طبیعت و حالِ بهتر — چرا بیرون‌رفتن، ذهن را آرام می‌کند.' } },
+  { id:'chaharshanbe', name:'چهارشنبه‌سوری', special:'lastTuesdayEsfand', summary:'آخرین سه‌شنبهٔ سال؛ جشن آتش در آستانهٔ نوروز.',
+    pages:{ 'شاهنامه':'آتش و هوشنگ — قصهٔ پیدایش آتش، درست سرِ جشن آتش.', 'شده دیگه':'پریدن از روی آتش و دورهمی شب چهارشنبه‌سوری.', 'روانشناسی':'رهاکردنِ سال کهنه — آیینِ خداحافظی با چیزهایی که دیگر نمی‌خواهیم.' } },
+  { id:'mehregan', name:'مهرگان', month:7, day:16, summary:'جشن مهر، پیمان و برداشت پاییزی.',
+    pages:{ 'شاهنامه':'مهر و پیمان در قصه‌های کهن؛ جشن پاییزیِ داد و دوستی.', 'شده دیگه':'دورهمی پاییزی و سفرهٔ مهرگان.', 'روانشناسی':'قدردانی و پیمان با خود — مهر، یعنی وفای به قول.' } },
+  { id:'yalda', name:'شب یلدا', month:9, day:30, summary:'بلندترین شب سال؛ شبِ قصه، انار و هندوانه.',
+    pages:{ 'شاهنامه':'قسمت ویژهٔ یلدا — قصهٔ شب بلند و آغاز روشن‌شدن روزها.', 'شده دیگه':'دورهمی یلدای خانوادگی — همان صحنه‌های آشنای شب یلدا.', 'گربه‌ها':'گربه‌ها با میوه‌های یلدا و پتو در شب سرد.', 'روانشناسی':'شبِ بلند و صبر و امید — چرا تاریک‌ترین شب، خبرِ روشن‌شدن است.' } },
+  { id:'catday', name:'روز جهانی گربه', month:5, day:17, gregorian:'۸ اوت', summary:'روز جهانی گربه (۸ اوت)؛ روزِ ثابت میلادی، روز جلالی‌اش ۱۷ مرداد است.',
+    pages:{ 'گربه‌ها':'روزِ خودشان — بهترین کار گربه‌ها برای روز جهانی گربه.', 'شده دیگه':'گربه‌های خیابانی و خانه — صحنهٔ روزمره با گربه.', 'روانشناسی':'گربه و آرامش ذهن — چرا نوازش گربه، اضطراب را کم می‌کند.' } },
+  { id:'mentalhealth', name:'روز جهانی سلامت روان', month:7, day:18, gregorian:'۱۰ اکتبر', summary:'روز جهانی سلامت روان (۱۰ اکتبر)؛ روزِ ثابت میلادی، روز جلالی‌اش ۱۸ مهر است.',
+    pages:{ 'روانشناسی':'روزِ اصلی روانشناسی — یک خطای ذهنی یا یک تمرین ساده و کاربردی.', 'شده دیگه':'حالِ روزمره — همان حس‌های آشنایی که همه تجربه می‌کنند.', 'گربه‌ها':'گربه‌ها و حالِ خوب — آرامشِ بودن با یک حیوان.' } },
+];
+function occasionForDay(js, dateObj){
+  const parts = String(js).split('/'); if (parts.length !== 3) return null;
+  const jm = Number(parts[1]), jd = Number(parts[2]);
+  for (const o of OCCASIONS) {
+    if (o.special === 'lastTuesdayEsfand') {
+      if (jm !== 12 || !dateObj) continue;
+      if (dateObj.getDay() !== 2) continue; // Tuesday
+      const nxt = new Date(dateObj); nxt.setDate(nxt.getDate()+7);
+      const np = jalaliParts(nxt);
+      if (np.jm === 1) return o;
+      continue;
+    }
+    if (o.month === jm && o.day === jd) return o;
+  }
+  return null;
+}
+function occasionCardHtml(occ){
+  if (!occ) return '';
+  const rows = Object.keys(occ.pages).map(page=>'<div style="margin-top:6px;line-height:1.8"><b>'+esc(page)+':</b> '+esc(occ.pages[page])+'</div>').join('');
+  return '<div class="card" style="border:2px solid var(--orange)"><b>✦ '+esc(occ.name)+'</b>' +
+    (occ.gregorian ? '<span class="meta"> ('+esc(occ.gregorian)+')</span>' : '') +
+    '<div style="margin-top:6px;line-height:1.8">'+esc(occ.summary)+'</div>' +
+    '<div style="margin-top:8px"><b>پیشنهاد محتوا برای هر پیج:</b></div>' + rows +
+    '<p class="meta" style="margin-top:8px;line-height:1.8">مناسبت‌های قمری (رمضان، عید فطر، عید قربان) تاریخ ثابت جلالی ندارند و سال به سال جابه‌جا می‌شوند؛ هر سال جداگانه چک و وارد شوند.</p></div>';
+}
+
+// ---------- Fix4b: publishing-schedule day view (structure only) ----------
+// Future schedule slot shape (documented; a later backend schedule table
+// must store exactly these fields, and renderPublishSlots below must then
+// read that table instead of window.__manualPublishSlots):
+//   { date: '1405/09/30',   // Jalali date string, same format as jalaliStr()
+//     page: 'شاهنامه',      // panel category = the page/network
+//     time: '18:00',        // HH:MM, or '' when no hour is set yet
+//     title: 'قسمت ویژهٔ یلدا',
+//     status: 'planned' }   // planned | due-task | pipeline-ready | pipeline-review | placeholder
+// Manual slots are EMPTY by default: no scheduled publish is invented.
+// The future backend only has to fill this array (or an equivalent
+// S.schedule list) in the same shape; no Calendar-screen rewrite is needed.
+if (typeof window.__manualPublishSlots === 'undefined') window.__manualPublishSlots = [];
+function renderPublishSlots(day){
+  const el = document.getElementById('publishSlotsBox'); if (!el || !S) return;
+  const slots = [];
+  S.todos.filter(t=>t.deadline === day && t.status !== 'done').forEach(t=>{
+    slots.push({ date: day, page: t.category || 'نامشخص', time: '', title: t.title, status: 'due-task', id: t.id });
+  });
+  (window.__manualPublishSlots || []).filter(s=>s && s.date === day).forEach(s=>{
+    slots.push({ date: s.date, page: s.page || 'نامشخص', time: s.time || '', title: s.title || '', status: s.status || 'planned' });
+  });
+  slots.sort((a,b)=>{
+    if ((a.time || '') !== (b.time || '')) return (a.time || '99:99') < (b.time || '99:99') ? -1 : 1;
+    return String(a.page).localeCompare(String(b.page));
+  });
+  const ready = S.pipeline.filter(p=>p.stage === 5);
+  const review = S.pipeline.filter(p=>p.stage === 4);
+  let html = '<div class="card"><b>برنامه انتشار این روز — ' + fmtStoredDate(day) + '</b>';
+  if (slots.length) {
+    html += '<div style="margin-top:8px">' + slots.map(s=>{
+      const timeLabel = s.time ? esc(s.time) : '—';
+      const kind = s.status === 'due-task' ? 'کار موعددار' : 'برنامه‌ریزی‌شده';
+      return '<div class="row" style="justify-content:space-between;margin-top:6px"><span><b>' + timeLabel + '</b> · ' + esc(s.page) + ' — ' + esc(s.title) + '</span><span class="meta">' + kind + '</span></div>';
+    }).join('') + '</div>';
+  } else {
+    html += '<div class="meta" style="margin-top:8px;line-height:1.8">برای این روز هنوز انتشار برنامه‌ریزی‌شده‌ای ثبت نشده است.</div>';
+  }
+  html += '<div class="meta" style="margin-top:10px;line-height:1.8;border-top:1px dashed var(--mut);padding-top:8px">ساختار برنامه‌ریزی آینده (قالب، نه برنامهٔ واقعی): [صفحه] — [ساعت] — [عنوان محتوا] — وضعیت: برنامه‌ریزی‌شده. وقتی جدول برنامهٔ انتشار ساخته شود، برنامه‌ها با همین شکل همین‌جا می‌آیند.</div>';
+  if (ready.length || review.length) {
+    html += '<div style="margin-top:10px"><b>آماده برای برنامه‌ریزی (بدون تاریخ انتشار):</b>' +
+      '<div class="meta" style="margin-top:6px">' + (ready.length ? 'آمادهٔ انتشار: ' + ready.map(p=>esc(p.title)+' ('+esc(p.category)+')').join('، ') + '. ' : '') +
+      (review.length ? 'در بازبینی: ' + review.map(p=>esc(p.title)+' ('+esc(p.category)+')').join('، ') + '.' : '') + '</div></div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
 function renderCal(){
   if (!S) return;
   const pCur = jalaliParts(calCursor);
@@ -1128,13 +1255,17 @@ function renderCal(){
     const js = jalaliStr(cur);
     const has = S.todos.some(t=>t.deadline===js) || S.reports.some(r=>r.date===js);
     const cls = (js===today?'today ':'') + (selDay===js?'sel':'');
-    html += '<div class="'+cls+'" onclick="selDay=\''+js+'\';renderCal()">'+p.jd+(has?'<span class="cal-dot"></span>':'')+'</div>';
+    const occDay = occasionForDay(js, cur);
+    html += '<div class="'+cls+'" onclick="selDay=\''+js+'\';renderCal()">'+p.jd+(has?'<span class="cal-dot"></span>':'')+(occDay?'<span class="cal-occ">✦</span>':'')+'</div>';
     cur.setDate(cur.getDate()+1);
   }
   document.getElementById('calGrid').innerHTML = html;
   const day = selDay || today;
   const todos = S.todos.filter(t=>t.deadline===day);
   const reps = S.reports.filter(r=>r.date===day);
+  const occSel = occasionForDay(day, jalaliToDate(day));
+  const occEl = document.getElementById('occasionBox'); if (occEl) occEl.innerHTML = occasionCardHtml(occSel);
+  renderPublishSlots(day);
   document.getElementById('dayBox').innerHTML = '<div class="card"><b>روز '+fmtStoredDate(day)+'</b>' +
     '<div style="margin-top:8px"><b>کارها:</b> ' + (todos.length ? todos.map(t=>'<span style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</span> ('+STATUS[t.status]+')').join('، ') : '—') + '</div>' +
     '<div style="margin-top:6px"><b>گزارش:</b> ' + (reps.length ? esc(String(reps[0].text).slice(0,120)) : 'هنوز ثبت نشده') + '</div>' +
@@ -1249,6 +1380,10 @@ function setTaskChip(kind, v){
 }
 function setTaskView(v){
   taskView = v;
+  // Tapping a view button (list/board/mine) is an explicit manual choice,
+  // so it leaves sequential mode; archive is unaffected. The full-list
+  // banner offers the way back to sequential mode.
+  if (v !== 'archive') { try { localStorage.setItem('panelSeqMode', '0'); } catch(e) {} }
   ['list','board','mine','archive'].forEach(x=>{ const b = document.getElementById('tv-'+x); if (b) b.classList.toggle('on', x===v); });
   if (v === 'mine') taskFilter.person = 'mine';
   renderTaskChips(); renderTasks();
@@ -1304,6 +1439,33 @@ function renderTasks(){
   // separate banner is not repeated here.
   let html = '';
   if (unc.length) html += '<div class="meta" style="margin-bottom:12px">«نامشخص» یعنی هنوز دسته ندارد.</div>';
+  // Fix4: sequential mode (default, except Archive). Only the first open
+  // task is shown in full; the rest are a collapsed, dimmed title list
+  // with no detail and no action buttons. Nothing is deleted or hidden
+  // from data — the full list is one tap away via the override below.
+  if (seqModeOn() && taskView !== 'archive') {
+    const seq = seqOpenTasksSorted(list);
+    html += '<div class="card" style="border:2px solid #2dd4bf"><b>حالت مرحله‌ای</b><div class="meta" style="margin-top:6px;line-height:1.8">فقط کار فعلی با جزئیات نشان داده می‌شود؛ تا وقتی تمام نشود، کار بعدی باز نمی‌شود — مگر اینکه خودت انتخاب کنی.</div>' +
+      '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="setSeqMode(false)">نمایش همه و انتخاب خودم</button></div>';
+    if (!seq.length) {
+      html += '<div class="meta">کاری باز نیست — کارهای انجام‌شده در بایگانی‌اند.</div>';
+      document.getElementById('todoList').innerHTML = html;
+      return;
+    }
+    const first = seq[0], restSeq = seq.slice(1);
+    html += '<h2>الان این کار</h2>' + taskCardHtml(first);
+    if (restSeq.length) {
+      html += '<h2>بعدی‌ها ('+toFaDigits(restSeq.length)+') — تا کار فعلی تمام نشود، باز نمی‌شوند</h2>' +
+        '<div class="card" style="opacity:.55">' + restSeq.map((t,i)=>'<div class="meta" style="line-height:2">' + toFaDigits(i+2) + '. #' + t.id + ' — ' + esc(t.title) + ' (' + esc(t.category || 'نامشخص') + ')</div>').join('') + '</div>';
+    }
+    document.getElementById('todoList').innerHTML = html;
+    return;
+  }
+  // Full-list (manual) mode: banner offering the way back to sequential.
+  if (taskView !== 'archive') {
+    html += '<div class="card"><b>حالت انتخاب دستی</b><div class="meta" style="margin-top:6px">همهٔ کارها نشان داده می‌شوند و خودت هر کدام را انتخاب می‌کنی.</div>' +
+      '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="setSeqMode(true)">برگشت به حالت مرحله‌ای</button></div>';
+  }
   if (taskView === 'archive') {
     // Archive: done tasks only, same card/detail/restore/delete actions.
     // The card's tick and 'باز کردن' action restore a task to in_progress.
