@@ -2130,6 +2130,50 @@ function tailoredGuideHtml(t){
 // - Step titles themselves are NOT rewritten: they are persistent
 //   server data already created by createGuideSteps; only the guide
 //   prose was shortened. The steps list under 'گام‌ها' is unchanged.
+// ---------- Fix17: stage cards as real To Do cards + TREE ----------
+// WHY (user, live fix16 screenshot of #35): the cards showed NO
+// proposals — just 'گام این مرحله هنوز ساخته نشده...' Gating
+// proposals behind 'build steps' is backwards: Muse's proposals are
+// Muse's content and must be there immediately, steps or no steps.
+// WHAT CHANGED (frontend only, no new backend action/column):
+// - Every stage card IS a To Do card for its page, openable at once:
+//   collapsed view = page name + status pill + 'X از N' inner count +
+//   one-line proposal headline; expanded view = full proposals, Muse
+//   help, manual work, delivery, feedback, inner checklist. The
+//   'ساختن گام‌ها' button is now OPTIONAL (migration only), never a
+//   prerequisite for seeing proposals or delivering.
+// - TREE MODEL (user, 2026-10-30): every task is a tree. A stage card
+//   contains its own small inner checklist; the stage ticks only when
+//   its inner items are done; ticking up the tree (inner -> stage ->
+//   all stages -> task) is what closes the overall task. Inner items:
+//   search/combo/handle kinds adapt their labels (see
+//   stageInnerItems); link/file/result items are AUTO-ticked from the
+//   data itself (link present / files present / note text present),
+//   the manual item is hand-ticked, and the 'تأیید میوز' item IS the
+//   stage tick (step done flag, or the fallback tick line when there
+//   is no step). The stage checkbox is therefore DISABLED until its
+//   prerequisite inner items are done — that is the tick-up rule,
+//   enforced in UI only. A stage ticked directly on the server (Muse
+//   ticking the step) counts as its confirm item, so the count follows.
+// - DELIVERY WITHOUT STEPS (never lose a delivery): when no staged
+//   steps exist, delivery writes to a SEPARATE task-level note with
+//   prefix '📋 تحویل مرحلهٔ «todoId:N»:' (stageFallbackNote), NOT
+//   into the task detail note (which would pollute the guide text).
+//   The card reads the step note if it has content, else the fallback
+//   note (stageParsedFor merges them); ensureStageSteps migrates
+//   fallback bodies into the new step notes (migrateStageFallbacks),
+//   so nothing is lost when steps are built later. Files uploaded
+//   without steps still get a real task_attachments row (todo_id
+//   only) + the 📎 line in the fallback note, so stageFileMap labels
+//   them by stage. The task itself is NEVER auto-closed: when all 5
+//   stages tick, a prominent banner + one-tap 'تمام‌شده بزن' button
+//   appears (existing updateTodo 'done' only); the user confirms.
+// - NOTE FORMAT (same step-note lines as fix16, plus two):
+//   🔗 link, 📎 files, ☑ manual-done line ('☑ کار دستی انجام شد'),
+//   ✅ confirm line ('✅ مرحله انجام شد', fallback only — with a
+//   step, the step done flag IS the confirm), other text, ⛔ dont,
+//   ➕ need, 🤖 muse (last). stageNoteParse reads all of them;
+//   stageNoteBuild writes them in this canonical order.
 function isStagedTask(t){
   const det = (t.detail || '') || (typeof taskDetail === 'function' ? taskDetail(t) : '');
   const tt = { title: t.title, category: t.category, detail: det, id: t.id, assignee: t.assignee };
@@ -2160,7 +2204,7 @@ function stageShortLine(kind, cat){
   return 'پیج ' + page + ': سرچ‌ها → لینک بورد رو تو فیلد همین مرحله بذار + فایل‌ها رو تو 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه';
 }
 function stageNoteParse(body){
-  const out = { link: '', files: [], muse: '', other: [], dont: '', need: '' };
+  const out = { link: '', files: [], muse: '', other: [], dont: '', need: '', manualDone: false, tick: false };
   const lines = String(body || '').split('\n');
   let mode = 'other';
   const buckets = { other: [], dont: [], need: [], muse: [] };
@@ -2169,6 +2213,8 @@ function stageNoteParse(body){
     const line = raw.trim();
     if (line.indexOf('🔗 لینک بورد:') === 0) { out.link = line.slice('🔗 لینک بورد:'.length).trim(); mode = 'other'; continue; }
     if (line.indexOf('📎 فایل‌های این مرحله:') === 0) { const rest = line.slice('📎 فایل‌های این مرحله:'.length).trim(); out.files = rest ? rest.split(/،|,/).map(function(s){ return s.trim(); }).filter(Boolean) : []; mode = 'other'; continue; }
+    if (line.indexOf('☑ کار دستی انجام شد') === 0) { out.manualDone = true; mode = 'other'; continue; }
+    if (line.indexOf('✅ مرحله انجام شد') === 0) { out.tick = true; mode = 'other'; continue; }
     if (line.indexOf('⛔ نمی‌خوام چون:') === 0) { buckets.dont.push(line.slice('⛔ نمی‌خوام چون:'.length).trim()); mode = 'dont'; continue; }
     if (line.indexOf('➕ چیزهای دیگه که نیاز داریم:') === 0) { buckets.need.push(line.slice('➕ چیزهای دیگه که نیاز داریم:'.length).trim()); mode = 'need'; continue; }
     if (line.indexOf('🤖 یادداشت میوز:') === 0) { buckets.muse.push(line.slice('🤖 یادداشت میوز:'.length).trim()); mode = 'muse'; continue; }
@@ -2181,25 +2227,109 @@ function stageNoteParse(body){
   out.muse = buckets.muse.join('\n').trim();
   return out;
 }
+
 function stageNoteBuild(p){
   const parts = [];
   if (p.link) parts.push('🔗 لینک بورد: ' + p.link);
   if (p.files && p.files.length) parts.push('📎 فایل‌های این مرحله: ' + p.files.join('، '));
+  if (p.manualDone) parts.push('☑ کار دستی انجام شد');
+  if (p.tick) parts.push('✅ مرحله انجام شد');
   if (p.other && p.other.length) { for (let i = 0; i < p.other.length; i++) parts.push(p.other[i]); }
   if (p.dont) parts.push('⛔ نمی‌خوام چون: ' + p.dont);
   if (p.need) parts.push('➕ چیزهای دیگه که نیاز داریم: ' + p.need);
   if (p.muse) parts.push('🤖 یادداشت میوز: ' + p.muse);
   return parts.join('\n');
 }
+
+// Fix17: fallback delivery note (no steps yet) + effective parsed note
+// + tick-up helpers. See the Fix17 comment block above for the model.
+function stageFallbackPrefix(todoId, i){ return '📋 تحویل مرحلهٔ «' + todoId + ':' + (i + 1) + '»:\n'; }
+function stageFallbackNote(todoId, i){
+  const prefix = stageFallbackPrefix(todoId, i);
+  const n = (S.notes || []).find(function(x){ return String(x.text || '').indexOf(prefix) === 0; });
+  if (!n) return null;
+  return { id: n.id, body: String(n.text).slice(prefix.length).trim() };
+}
+function stageParsedEmpty(p){ return !p.link && !p.files.length && !p.manualDone && !p.tick && !p.dont && !p.need && !p.muse && !p.other.length; }
+function stageParsedFor(todoId, i){
+  const steps = stagedStepsFor(todoId);
+  const step = steps[i] || null;
+  if (step){
+    const sn = stepNoteFor(todoId, step.id);
+    const parsed = stageNoteParse(sn ? sn.body : '');
+    if (stageParsedEmpty(parsed)){
+      const fb = stageFallbackNote(todoId, i);
+      if (fb) return { parsed: stageNoteParse(fb.body), step: step, fromFallback: true };
+    }
+    return { parsed: parsed, step: step, fromFallback: false };
+  }
+  const fb = stageFallbackNote(todoId, i);
+  return { parsed: fb ? stageNoteParse(fb.body) : stageNoteParse(''), step: null, fromFallback: !!fb };
+}
+async function stageWriteParsed(todoId, i, parsed){
+  const steps = stagedStepsFor(todoId);
+  const step = steps[i] || null;
+  if (step){
+    const sn = stepNoteFor(todoId, step.id);
+    const full = stepNotePrefix(todoId, step.id) + stageNoteBuild(parsed);
+    if (sn) await call('updateNote', { id: sn.id, text: full });
+    else await call('addNote', { text: full });
+  } else {
+    const fb = stageFallbackNote(todoId, i);
+    const full = stageFallbackPrefix(todoId, i) + stageNoteBuild(parsed);
+    if (fb) await call('updateNote', { id: fb.id, text: full });
+    else await call('addNote', { text: full });
+  }
+}
+function stageTicked(todoId, i){
+  const steps = stagedStepsFor(todoId);
+  const step = steps[i] || null;
+  if (step) return !!step.done;
+  return stageParsedFor(todoId, i).parsed.tick;
+}
+function stageInnerItems(kind, parsed, ticked){
+  if (kind === 'combo') return [
+    { label: 'کنار هم گذاشتن وکتور + استایل', done: parsed.manualDone, mode: 'manual' },
+    { label: 'نوشتن ترکیب در یادداشت همین کارت', done: parsed.other.length > 0, mode: 'auto' },
+    { label: 'تأیید میوز', done: ticked, mode: 'confirm' }
+  ];
+  if (kind === 'handle') return [
+    { label: 'امتحان کردن هندل', done: parsed.manualDone, mode: 'manual' },
+    { label: 'نوشتن نتیجه در یادداشت همین کارت', done: parsed.other.length > 0, mode: 'auto' },
+    { label: 'تأیید میوز', done: ticked, mode: 'confirm' }
+  ];
+  return [
+    { label: 'پیدا کردن با عبارت‌های سرچ', done: parsed.manualDone, mode: 'manual' },
+    { label: 'ثبت لینک بورد', done: !!parsed.link, mode: 'auto' },
+    { label: 'آپلود فایل‌ها', done: parsed.files.length > 0, mode: 'auto' },
+    { label: 'تأیید میوز', done: ticked, mode: 'confirm' }
+  ];
+}
+function stageProposalHeadline(cat, kind){
+  if (kind === 'handle') return cat === 'شاهنامه' ? 'هندل‌های پیشنهادی: pretimetv، بعد pretime' : 'هندل هم‌نام شبکه‌های دیگر همین پیج';
+  if (kind === 'combo') return 'ترکیب آماده: وکتور نهایی + استایل نهایی';
+  const m = { 'روانشناسی': 'مغز خطی + قفل بازشونده', 'شاهنامه': 'سیمرغ + مینیاتور طلایی', 'شده دیگه': 'چهرهٔ دودل ساده + خط شوخ', 'گربه‌ها': 'گربهٔ خطی + پنجه', 'همکار': 'ویترین خطی + آدمک دو نفره' };
+  return m[cat] || 'سه گزینه: امن / جسورانه / میانه';
+}
+function stageMuseHelp(kind){
+  if (kind === 'combo') return 'بعد از نوشتن ترکیب تو، میوز آن را با دلیل نهایی می‌کند و بعد از تأیید تو، پیج بعدی باز می‌شود.';
+  if (kind === 'handle') return 'بعد از نوشتن نتیجه، میوز هندل نهایی را ثبت می‌کند و در جدول کانال‌ها می‌گذارد.';
+  return 'بعد از تحویل تو، میوز مدل‌ها را کنار هم می‌چیند، با دلیل ترکیب نهایی این پیج را می‌گوید و بعد از تأیید تو سراغ پیج بعدی می‌رود.';
+}
+function stageManualLine(kind){
+  if (kind === 'combo') return 'وکتور نهایی نگین و استایل نهایی امیر را کنار هم بگذار و ترکیب را در یادداشت همین کارت بنویس.';
+  if (kind === 'handle') return 'در آپارات هندل‌ها را به ترتیب امتحان کن و نتیجه را در یادداشت همین کارت بنویس.';
+  return 'در پینترست با عبارت‌های زیر سرچ کن، بورد بساز، لینکش را در فیلد همین کارت بذار و فایل‌ها را همین‌جا آپلود کن.';
+}
 function stageFileMap(t){
   const map = {};
-  stagedStepsFor(t.id).forEach(function(s, i){
-    const sn = stepNoteFor(t.id, s.id);
-    if (!sn) return;
-    stageNoteParse(sn.body).files.forEach(function(fn){ map[fn] = { n: i + 1, page: PAGE_SEARCH_PHRASES[STAGE_ORDER[i]].page }; });
+  STAGE_ORDER.forEach(function(cat, i){
+    const eff = stageParsedFor(t.id, i);
+    eff.parsed.files.forEach(function(fn){ map[fn] = { n: i + 1, page: PAGE_SEARCH_PHRASES[cat].page }; });
   });
   return map;
 }
+
 function digitsToLatin(s){
   return String(s || '').replace(/[۰-۹]/g, function(d){ return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }).replace(/[٠-٩]/g, function(d){ return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); });
 }
@@ -2252,71 +2382,77 @@ function stageCardsHtml(t){
   const kind = stageKindFor(g.goal);
   const target = stageTargetFor(tt, kind);
   const steps = stagedStepsFor(t.id);
-  const doneCount = steps.filter(function(s){ return s.done; }).length;
-  const foundIdx = steps.length ? steps.findIndex(function(s){ return !s.done; }) : 0;
-  const allDone = steps.length > 0 && foundIdx === -1;
-  const curLabel = steps.length ? (allDone ? 5 : foundIdx + 1) : 1;
-  let html = '<h2 style="margin-top:16px">مرحله‌های این کار</h2>';
-  html += '<div class="meta" style="line-height:1.9">مرحلهٔ ' + curLabel + ' از ۵ — ' + doneCount + ' تأیید شده. هر مرحله لینک بورد، فایل‌ها و وضعیت خودش را دارد؛ مرحلهٔ بعد فقط بعد از تأیید مرحلهٔ قبل باز می‌شود.</div>';
+  const tickedArr = STAGE_ORDER.map(function(cat, i){ return stageTicked(t.id, i); });
+  const doneCount = tickedArr.filter(Boolean).length;
+  const curIdx = tickedArr.indexOf(false);
+  const allDone = doneCount === STAGE_ORDER.length;
+  const curLabel = allDone ? 5 : curIdx + 1;
+  let html = '<h2 style="margin-top:16px">مرحله‌های این کار — هر کارت یک To Do برای یک پیج است</h2>';
+  html += '<div class="meta" style="line-height:1.9">مرحلهٔ ' + curLabel + ' از ۵ — ' + doneCount + ' تأیید شده. کارت هر پیج را باز کن: پیشنهادها همان‌جاست، حتی اگر گام مرحله‌ای ساخته نشده باشد.</div>';
   if (!steps.length) {
-    html += '<p class="meta" style="line-height:1.9">هنوز گام مرحله‌ای ساخته نشده؛ اول ۵ گام مرحله‌ای را بساز تا فیلد لینک و تحویل هر مرحله فعال شود.</p><button class="btn-teal btn-sm" style="margin-top:8px" onclick="ensureStageSteps(' + t.id + ',this)">ساختن ۵ گام مرحله‌ای</button>';
+    html += '<p class="meta" style="line-height:1.9">گام مرحله‌ای هنوز ساخته نشده — ولی کارت‌ها کامل کار می‌کنند و تحویل‌ها با برچسب مرحله ذخیره می‌شوند. ساختن گام‌ها فقط برای انتقال به گام‌هاست، نه پیش‌نیاز.</p><button class="btn-teal btn-sm" style="margin-top:8px" onclick="ensureStageSteps(' + t.id + ',this)">ساختن گام‌های مرحله‌ای (اختیاری)</button>';
+  }
+  if (allDone && t.status !== 'done') {
+    html += '<div class="card" style="margin-top:12px;border:2px solid #2dd4bf"><div style="line-height:1.9"><b>✅ همهٔ مرحله‌ها انجام شد — این تسک کامل شد</b></div><p class="meta" style="line-height:1.9">همهٔ ۵ پیج تأیید شده‌اند. برای بستن تسک، دکمهٔ زیر را بزن (خودکار بسته نمی‌شود).</p><button class="btn-teal" style="margin-top:8px" onclick="completeStagedTask(' + t.id + ',this)">✅ تمام‌شده بزن — این تسک کامل شد</button></div>';
+  } else if (allDone) {
+    html += '<div class="meta" style="line-height:1.9;margin-top:8px">✅ همهٔ مرحله‌ها انجام شده و این تسک تمام شده است.</div>';
   }
   html += STAGE_ORDER.map(function(cat, i){
     const pg = PAGE_SEARCH_PHRASES[cat];
+    const eff = stageParsedFor(t.id, i);
+    const parsed = eff.parsed;
+    const ticked = tickedArr[i];
+    const locked = !ticked && !allDone && i > curIdx;
+    const isCur = !allDone && i === curIdx;
+    const items = stageInnerItems(kind, parsed, ticked);
+    const innerDone = items.filter(function(x){ return x.done; }).length;
+    const prereqDone = items.filter(function(x){ return x.mode !== 'confirm'; }).every(function(x){ return x.done; });
+    const status = ticked ? '✅ تأیید شد' : ((parsed.link || parsed.files.length || parsed.manualDone) ? '📥 تحویل داده شد' : '⏳ در انتظار');
     const termsLabel = kind === 'combo' ? 'کار این مرحله: ' : (kind === 'handle' ? 'امتحان کن: ' : 'سرچ‌ها: ');
     const byoHtml = '<div style="line-height:1.9;margin-top:8px"><b>🧳 مال خودت:</b> ' + termsLabel + esc(stageTermsFor(kind, cat).join(' ، ')) + '</div>';
-    const step = steps[i] || null;
-    if (!step) {
-      return '<div class="card" style="margin-bottom:10px"><div style="line-height:1.9"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">⏳ در انتظار</span></div>' + byoHtml + '<div class="meta" style="line-height:1.9">گام این مرحله هنوز ساخته نشده. 💡 پیشنهادها و ✍️ بازخورد این مرحله بعد از ساختن گام‌ها این‌جا می‌آید.</div></div>';
-    }
-    const sn = stepNoteFor(t.id, step.id);
-    const parsed = stageNoteParse(sn ? sn.body : '');
-    const status = step.done ? '✅ تأیید شد' : ((parsed.link || parsed.files.length) ? '📥 تحویل داده شد' : '⏳ در انتظار');
-    const locked = !step.done && !allDone && i > foundIdx;
-    const filesHtml = stageFilesHtml(t.id, parsed);
     const progressHtml = target
       ? '<div style="line-height:1.9">📊 پیشرفت این مرحله: ' + parsed.files.length + ' از ' + target.n + ' ' + target.unit + (parsed.files.length < target.n ? ' · ' + (target.n - parsed.files.length) + ' مانده' : ' · هدف پر شد') + '</div>'
       : '';
-    const proposalsHtml = locked
-      ? '<div class="meta" style="line-height:1.9">💡 پیشنهادهای میوز برای این پیج: بعد از باز شدن مرحله این‌جا می‌آید.</div>'
-      : '<details ' + (step.done ? '' : 'open') + ' style="margin-top:8px"><summary style="line-height:1.9;cursor:pointer">💡 پیشنهادهای میوز برای این پیج</summary>' + stageProposalsHtml(t, cat) + '</details>';
-    const museLine = '<div style="line-height:1.9">🤖 یادداشت میوز: ' + (parsed.muse ? esc(parsed.muse) : '<span class="meta">هنوز نوشته نشده</span>') + '</div>';
+    const proposalsHtml = '<details ' + (isCur ? 'open' : '') + ' style="margin-top:8px"><summary style="line-height:1.9;cursor:pointer">💡 پیشنهادهای میوز برای این پیج</summary>' + stageProposalsHtml(t, cat) + '</details>';
+    const museLine = '<div style="line-height:1.9;margin-top:8px">🤖 کمکی که میوز می‌کند: ' + stageMuseHelp(kind) + '</div>';
+    const manualHtml = '<div style="line-height:1.9;margin-top:8px"><b>🧳 کاری که خودت دستی انجام می‌دی:</b> ' + stageManualLine(kind) + '</div>';
     const otherHtml = parsed.other.length ? '<div style="line-height:1.9">📝 یادداشت مرحله: ' + esc(parsed.other.join(' / ')) + '</div>' : '';
-    const feedbackHtml = locked
-      ? '<div class="meta" style="line-height:1.9">✍️ بازخورد این مرحله: بعد از باز شدن مرحله این‌جا می‌آید.</div>'
-      : '<div style="margin-top:8px"><label style="line-height:1.9">✍️ بازخورد تو روی پیشنهادها</label><textarea id="stageDontInput-' + i + '" placeholder="این‌ها رو نمی‌خوام چون…" style="min-height:44px;margin-top:4px">' + esc(parsed.dont) + '</textarea><textarea id="stageNeedInput-' + i + '" placeholder="این چیزهای دیگه رو نیاز داریم…" style="min-height:44px">' + esc(parsed.need) + '</textarea><button class="btn-teal btn-sm" style="margin-top:4px" onclick="saveStageFeedback(' + t.id + ',' + i + ',this)">ذخیرهٔ بازخورد</button></div>';
-    const checkHtml = '<label style="display:flex;gap:8px;align-items:center;line-height:1.9;margin-top:8px"><input type="checkbox" ' + (step.done ? 'checked' : '') + (locked ? ' disabled' : '') + ' onchange="toggleViewStep(' + t.id + ',' + step.id + ',this.checked)"> تأیید این مرحله (تیک گام مرحله — معمولاً میوز بعد از چیدمان می‌زند)</label>';
+    const museNoteLine = parsed.muse ? '<div style="line-height:1.9">🤖 یادداشت میوز: ' + esc(parsed.muse) + '</div>' : '';
+    const filesHtml = stageFilesHtml(t.id, parsed);
+    const feedbackHtml = '<div style="margin-top:8px"><label style="line-height:1.9">✍️ بازخورد تو روی پیشنهادها</label><textarea id="stageDontInput-' + i + '" placeholder="این‌ها رو نمی‌خوام چون…" style="min-height:44px;margin-top:4px">' + esc(parsed.dont) + '</textarea><textarea id="stageNeedInput-' + i + '" placeholder="این چیزهای دیگه رو نیاز داریم…" style="min-height:44px">' + esc(parsed.need) + '</textarea><button class="btn-teal btn-sm" style="margin-top:4px" onclick="saveStageFeedback(' + t.id + ',' + i + ',this)">ذخیرهٔ بازخورد</button></div>';
+    const checkHtml = items.map(function(it, j){
+      if (it.mode === 'manual') return '<label style="display:flex;gap:8px;align-items:center;line-height:1.9"><input type="checkbox" ' + (it.done ? 'checked' : '') + (locked ? ' disabled' : '') + ' onchange="toggleInnerFind(' + t.id + ',' + i + ',this.checked)"> ' + esc(it.label) + '</label>';
+      if (it.mode === 'auto') return '<label style="display:flex;gap:8px;align-items:center;line-height:1.9"><input type="checkbox" ' + (it.done ? 'checked' : '') + ' disabled> ' + esc(it.label) + (it.done ? '' : ' <span class="meta">(خودکار تیک می‌خورد)</span>') + '</label>';
+      return '<label style="display:flex;gap:8px;align-items:center;line-height:1.9"><input type="checkbox" ' + (it.done ? 'checked' : '') + ((locked || (!it.done && !prereqDone)) ? ' disabled' : '') + ' onchange="toggleStageTick(' + t.id + ',' + i + ',this.checked)"> <b>' + esc(it.label) + '</b>' + ((!it.done && !prereqDone) ? ' <span class="meta">(بعد از تیک خوردن بقیهٔ این کارت باز می‌شود)</span>' : '') + '</label>';
+    }).join('');
+    const checklistHtml = '<div style="margin-top:10px"><b>چک‌لیست این مرحله:</b>' + checkHtml + '</div>';
     let body = '';
-    if (locked) {
-      body = '<div class="meta" style="line-height:1.9">🔒 بعد از تأیید مرحلهٔ قبل باز می‌شود</div>' + progressHtml + proposalsHtml + byoHtml + museLine + feedbackHtml + checkHtml;
-    } else if (step.done) {
-      body = progressHtml + proposalsHtml + byoHtml +
-        '<div style="line-height:1.9;margin-top:8px">🔗 لینک بورد این پیج: ' + (parsed.link ? '<a href="' + esc(parsed.link) + '" target="_blank" rel="noopener">' + esc(parsed.link) + '</a>' : '<span class="meta">ثبت نشده</span>') + '</div>' + filesHtml + museLine + otherHtml + feedbackHtml + '<div class="meta" style="line-height:1.9">این مرحله تأیید شده؛ فایل جدید را در مرحلهٔ جاری بگذار.</div>' + checkHtml;
+    body += proposalsHtml + museLine + manualHtml + byoHtml;
+    if (ticked) {
+      body += progressHtml + '<div style="line-height:1.9;margin-top:8px">🔗 لینک بورد این پیج: ' + (parsed.link ? '<a href="' + esc(parsed.link) + '" target="_blank" rel="noopener">' + esc(parsed.link) + '</a>' : '<span class="meta">ثبت نشده</span>') + '</div>' + filesHtml + museNoteLine + otherHtml + feedbackHtml + '<div class="meta" style="line-height:1.9">این مرحله تأیید شده؛ فایل جدید را در مرحلهٔ جاری بگذار.</div>' + checklistHtml;
+    } else if (locked) {
+      body += progressHtml + '<div class="meta" style="line-height:1.9;margin-top:8px">🔒 تحویل این مرحله بعد از تأیید مرحلهٔ قبل باز می‌شود — ولی پیشنهادها و بازخوردش همین‌جا قابل دیدن است.</div>' + feedbackHtml + checklistHtml;
     } else {
-      body = '<div style="line-height:1.9"><b>' + stageAskLine(kind) + '</b></div>' + progressHtml + proposalsHtml + byoHtml +
+      body += '<div style="line-height:1.9;margin-top:8px"><b>' + stageAskLine(kind) + '</b></div>' + progressHtml +
         '<div style="line-height:1.9;margin-top:8px;margin-bottom:6px"><label>لینک بورد این پیج</label><div class="row" style="gap:8px;margin-top:4px"><input type="text" id="stageLinkInput-' + i + '" value="' + esc(parsed.link) + '" placeholder="لینک بورد این پیج…" style="flex:1;margin-bottom:0" dir="ltr"><button class="btn-teal btn-sm" onclick="saveStageLink(' + t.id + ',' + i + ',this)">ذخیرهٔ لینک</button></div></div>' +
         '<div style="line-height:1.9">📎 فایل‌های این مرحله — فقط از همین کارت آپلود کن تا به همین مرحله وصل شوند:</div>' + filesHtml +
         '<div class="row" style="gap:8px;margin-top:8px"><input type="file" id="stageFileInput-' + i + '" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style="flex:1;min-width:0"><button class="btn-teal btn-sm" onclick="uploadStageFile(' + t.id + ',' + i + ',this)">⬆️ آپلود برای همین مرحله</button></div>' +
-        '<div id="stageUploadStatus-' + i + '" class="meta" style="margin-top:6px"></div>' + museLine + otherHtml + feedbackHtml + checkHtml;
+        '<div id="stageUploadStatus-' + i + '" class="meta" style="margin-top:6px"></div>' + museNoteLine + otherHtml + feedbackHtml + checklistHtml;
     }
-    return '<div class="card" style="margin-bottom:10px"><div style="line-height:1.9"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">' + status + '</span></div>' + body + '</div>';
+    return '<details class="card" ' + (isCur ? 'open' : '') + ' style="margin-bottom:10px"><summary style="line-height:1.9;cursor:pointer"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">' + status + '</span> <span class="meta">' + innerDone + ' از ' + items.length + ' ✓</span><br><span class="meta">💡 ' + esc(stageProposalHeadline(cat, kind)) + '</span></summary><div style="margin-top:8px">' + body + '</div></details>';
   }).join('');
   return html;
 }
 
+
 async function saveStageLink(todoId, stageIdx, btn){
   const el = document.getElementById('stageLinkInput-' + stageIdx);
   const link = el ? el.value.trim() : '';
-  const step = stagedStepsFor(todoId)[stageIdx];
-  if (!step) return showErr('گام این مرحله ساخته نشده');
   if (btn) btn.disabled = true;
   try {
-    const sn = stepNoteFor(todoId, step.id);
-    const parsed = stageNoteParse(sn ? sn.body : '');
-    parsed.link = link;
-    const full = stepNotePrefix(todoId, step.id) + stageNoteBuild(parsed);
-    if (sn) await call('updateNote', { id: sn.id, text: full });
-    else await call('addNote', { text: full });
+    const eff = stageParsedFor(todoId, stageIdx);
+    eff.parsed.link = link;
+    await stageWriteParsed(todoId, stageIdx, eff.parsed);
     await refresh(); openTaskView(todoId);
   } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
 }
@@ -2325,16 +2461,11 @@ async function saveStageFeedback(todoId, stageIdx, btn){
   const needEl = document.getElementById('stageNeedInput-' + stageIdx);
   const dont = dontEl ? dontEl.value.trim() : '';
   const need = needEl ? needEl.value.trim() : '';
-  const step = stagedStepsFor(todoId)[stageIdx];
-  if (!step) return showErr('گام این مرحله ساخته نشده');
   if (btn) btn.disabled = true;
   try {
-    const sn = stepNoteFor(todoId, step.id);
-    const parsed = stageNoteParse(sn ? sn.body : '');
-    parsed.dont = dont; parsed.need = need;
-    const full = stepNotePrefix(todoId, step.id) + stageNoteBuild(parsed);
-    if (sn) await call('updateNote', { id: sn.id, text: full });
-    else await call('addNote', { text: full });
+    const eff = stageParsedFor(todoId, stageIdx);
+    eff.parsed.dont = dont; eff.parsed.need = need;
+    await stageWriteParsed(todoId, stageIdx, eff.parsed);
     await refresh(); openTaskView(todoId);
   } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
 }
@@ -2346,8 +2477,6 @@ async function uploadStageFile(todoId, stageIdx, btn){
   const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
   if (allowed.indexOf(file.type) === -1) return showErr('فقط عکس (PNG/JPEG/WebP/GIF) و PDF قبول می‌شود');
   if (file.size > 10 * 1024 * 1024) return showErr('فایل بزرگ‌تر از ۱۰ مگابایت است');
-  const step = stagedStepsFor(todoId)[stageIdx];
-  if (!step) return showErr('گام این مرحله ساخته نشده');
   if (btn) btn.disabled = true;
   if (status) status.textContent = 'در حال آماده‌سازی آپلود…';
   try {
@@ -2357,18 +2486,41 @@ async function uploadStageFile(todoId, stageIdx, btn){
     if (!put.ok) throw new Error('آپلود ناموفق بود — دوباره تلاش کن');
     if (status) status.textContent = 'در حال ثبت فایل برای همین مرحله…';
     await call('confirmUpload', { id: req.attachment.id });
-    const sn = stepNoteFor(todoId, step.id);
-    const parsed = stageNoteParse(sn ? sn.body : '');
-    if (parsed.files.indexOf(file.name) === -1) parsed.files.push(file.name);
-    const full = stepNotePrefix(todoId, step.id) + stageNoteBuild(parsed);
-    if (sn) await call('updateNote', { id: sn.id, text: full });
-    else await call('addNote', { text: full });
+    const eff = stageParsedFor(todoId, stageIdx);
+    if (eff.parsed.files.indexOf(file.name) === -1) eff.parsed.files.push(file.name);
+    await stageWriteParsed(todoId, stageIdx, eff.parsed);
     await refresh(); openTaskView(todoId);
   } catch(e){
     showErr(e.message || 'آپلود ناموفق بود');
     if (btn) btn.disabled = false;
     if (status) status.textContent = '';
   }
+}
+async function toggleInnerFind(todoId, stageIdx, done){
+  try {
+    const eff = stageParsedFor(todoId, stageIdx);
+    eff.parsed.manualDone = !!done;
+    await stageWriteParsed(todoId, stageIdx, eff.parsed);
+    await refresh(); openTaskView(todoId);
+  } catch(e){ showErr(e.message); }
+}
+async function toggleStageTick(todoId, stageIdx, done){
+  try {
+    const steps = stagedStepsFor(todoId);
+    const step = steps[stageIdx] || null;
+    if (step) { await call('updateStep', { id: step.id, done: !!done }); }
+    else {
+      const eff = stageParsedFor(todoId, stageIdx);
+      eff.parsed.tick = !!done;
+      await stageWriteParsed(todoId, stageIdx, eff.parsed);
+    }
+    await refresh(); openTaskView(todoId);
+  } catch(e){ showErr(e.message); }
+}
+async function completeStagedTask(todoId, btn){
+  if (btn) btn.disabled = true;
+  try { await call('updateTodo', { id: todoId, status: 'done' }); await refresh(); openTaskView(todoId); }
+  catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
 }
 async function ensureStageSteps(todoId, btn){
   if (stagedStepsFor(todoId).length) { await refresh(); openTaskView(todoId); return; }
@@ -2378,8 +2530,22 @@ async function ensureStageSteps(todoId, btn){
       const cat = STAGE_ORDER[i];
       await call('addStep', { todo_id: todoId, title: 'مرحلهٔ ' + (i + 1) + ' از ۵ — فقط ' + PAGE_SEARCH_PHRASES[cat].page + ': تحویل این پیج — لینک بورد را در فیلد همین مرحله بذار + فایل‌ها را در 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه' });
     }
+    await refresh();
+    await migrateStageFallbacks(todoId);
     await refresh(); openTaskView(todoId);
   } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
+}
+async function migrateStageFallbacks(todoId){
+  try {
+    const steps = stagedStepsFor(todoId);
+    for (let i = 0; i < steps.length; i++){
+      const fb = stageFallbackNote(todoId, i);
+      if (!fb || !fb.body) continue;
+      const sn = stepNoteFor(todoId, steps[i].id);
+      if (sn && sn.body) continue;
+      await call(sn ? 'updateNote' : 'addNote', sn ? { id: sn.id, text: stepNotePrefix(todoId, steps[i].id) + fb.body } : { text: stepNotePrefix(todoId, steps[i].id) + fb.body });
+    }
+  } catch(e){ /* best-effort: fallback notes stay readable regardless */ }
 }
 async function stripStageFile(todoId, fileName){
   try {
@@ -2392,8 +2558,17 @@ async function stripStageFile(todoId, fileName){
       parsed.files = parsed.files.filter(function(f){ return f !== fileName; });
       await call('updateNote', { id: sn.id, text: stepNotePrefix(todoId, steps[i].id) + stageNoteBuild(parsed) });
     }
+    for (let i = 0; i < STAGE_ORDER.length; i++){
+      const fb = stageFallbackNote(todoId, i);
+      if (!fb) continue;
+      const parsed = stageNoteParse(fb.body);
+      if (parsed.files.indexOf(fileName) === -1) continue;
+      parsed.files = parsed.files.filter(function(f){ return f !== fileName; });
+      await call('updateNote', { id: fb.id, text: stageFallbackPrefix(todoId, i) + stageNoteBuild(parsed) });
+    }
   } catch(e){ /* best-effort only: the delete itself already succeeded */ }
 }
+
 
 // ---------- Task sheet (bottom sheet, in-place editing via updateTodo) ----------
 // ---------- Task view sheet (read-only detail; the ONLY way into edit
