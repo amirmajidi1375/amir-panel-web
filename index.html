@@ -24,7 +24,7 @@
   [data-theme="dark"] { --bg:#1a1a2e; --card:#242444; --head:#12122a; --line:#33335c; --inputbg:#12122a; --txt:#fff; --mut:#a5a5c5; --ghost:#3a3a66; --ghostxt:#fff; --tagbg:#3a3a66; --tagteal:#0e3b34; --dangerbg:#3a2020; --shadow:none; }
   * { box-sizing:border-box; }
   html, body { overflow-x:clip; }
-  body { margin:0; background:var(--bg); color:var(--txt); font-family:'Vazirmatn',Tahoma,sans-serif; padding-bottom:96px; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:'Vazirmatn',Tahoma,sans-serif; padding-bottom:156px; }
   header { position:sticky; top:0; z-index:5; background:var(--head); padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); gap:8px; }
   header h1 { font-size:1.05rem; margin:0; flex:1; }
   .chip { background:var(--teal); color:#06251f; font-weight:700; font-size:.8rem; padding:4px 10px; border-radius:999px; }
@@ -133,6 +133,19 @@
   #pipeRail .filter-chip { flex:none; white-space:nowrap; }
   .sticky-rail { position:sticky; top:56px; z-index:4; background:var(--bg); padding:8px 0; }
   .active-filter-banner { background:var(--tagteal); border-radius:12px; padding:10px 12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  /* Fix2: FAB sits 76px above the bottom and is 56px tall (top edge ~132px
+     from the bottom), so scrollable content must end well above it, on
+     every screen, and especially on Home and Pipeline whose last buttons
+     were covered on phone widths. */
+  #scr-pipe, #scr-home { padding-bottom:20px; }
+  .method-card { background:var(--tagbg); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .method-card b { line-height:1.8; }
+  .chan-head { background:var(--tagteal); border-radius:12px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .chan-row2 { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .chan-row2:last-child { border-bottom:0; }
+  .chan-badge { width:36px; height:36px; border-radius:10px; background:var(--ghost); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex:none; }
+  .chan-handle { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .chan-dot { width:10px; height:10px; border-radius:50%; flex:none; }
 </style>
 </head>
 <body>
@@ -195,7 +208,11 @@
 
     <!-- ============ TASKS (list / board / my tasks) ============ -->
     <section class="screen" id="scr-tasks">
-      <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <button class="btn-teal" onclick="toggleTodoComposer(true)">＋ افزودن کار</button>
+        <span class="meta">کارهای انجام‌شده در بایگانی‌اند.</span>
+      </div>
+      <div class="card" id="todoComposer" style="display:none">
         <input id="todoTitle" placeholder="عنوان کار…" oninput="suggestCat()">
         <div id="catSuggest" class="meta" style="margin-bottom:8px"></div>
         <div style="display:flex;gap:6px">
@@ -204,12 +221,13 @@
           <button type="button" class="btn-ghost" style="margin-bottom:0;white-space:nowrap" onclick="openPicker('todoDeadline')">📅 تقویم</button>
         </div>
         <textarea id="todoDetail" class="task-detail" placeholder="توضیح کامل کار (اختیاری)… دقیق بنویس چه چیزی می‌خواهی، برای کی، با چه جزئیاتی؛ این توضیح زیر همان کار نمایش داده می‌شود."></textarea>
-        <button class="btn-teal" style="margin-top:8px" onclick="addTodo()">＋ اضافه کردن کار</button>
+        <div class="row" style="margin-top:8px"><button class="btn-teal" onclick="addTodo()">＋ اضافه کردن کار</button><button class="btn-ghost" onclick="toggleTodoComposer(false)">بستن</button></div>
       </div>
       <div class="seg" style="margin-bottom:12px">
         <button id="tv-list" class="on" onclick="setTaskView('list')">فهرست</button>
         <button id="tv-board" onclick="setTaskView('board')">بورد</button>
         <button id="tv-mine" onclick="setTaskView('mine')">کارهای من</button>
+        <button id="tv-archive" onclick="setTaskView('archive')">🗄️ بایگانی</button>
       </div>
       <div class="row" id="taskChips" style="margin-bottom:12px"></div>
       <div id="todoList"></div>
@@ -237,21 +255,30 @@
     <!-- ============ PIPELINE ============ -->
     <section class="screen" id="scr-pipe">
       <div class="card">
-        <p style="margin:0 0 10px;line-height:1.8"><b>خط لوله چیست؟</b><br>مسیر هر محتوا از ایده تا انتشار. هر کارت یک محتواست: اول ایده می‌شود، بعد سناریو، بعد ساخته می‌شود، بعد تدوین، بعد بازبینی، و آخر سر منتشر می‌شود. با «مرحله بعد» کارت را یک قدم جلو ببر؛ با «مرحله قبل» برگردان.</p>
-        <div id="stageCounts" class="row" style="margin-bottom:10px"></div>
+        <p style="margin:0 0 10px;line-height:1.8"><b>خط لوله چیست؟</b><br>مسیر یک محتوا از ایده تا انتشار است؛ تا تو و نگین با یک نگاه ببینید چی گیر کرده، چی آمادهٔ انتشار است و چی منتشر شده — به‌جای اینکه تو ذهن یا چت دنبالش بگردید.<br><b>مثال:</b> یک ریل «شده دیگه» یا یک قسمت شاهنامه: ایده → سناریو → تولید → تدوین → بازبینی → انتشار.<br>کار اصلی اینجاست: هر کارت را یک مرحله جلو ببر.</p>
         <div id="stageLegend"></div>
+      </div>
+      <div class="card">
+        <b>پیشنهاد از بانک ایده</b>
+        <p class="meta" style="margin:6px 0 0;line-height:1.8">اتصال زندهٔ بانک ایده هنوز ساخته نشده؛ وقتی ساخته شود، پیشنهادهای زندهٔ بانک همین‌جا نمایش داده می‌شوند. تا آن موقع، با دکمهٔ «ایده جدید» و انتخاب منبع «از بانک ایده»، عنوان یا کد همان مورد بانک را دستی وارد کن تا با برچسب بانک در خط لوله دنبال شود. هیچ پیشنهاد ساختگی‌ای اینجا نشان داده نمی‌شود.</p>
+      </div>
+      <div class="row" style="margin-bottom:12px"><button class="btn-teal" onclick="togglePipeForm(true)">＋ ایده جدید</button></div>
+      <div class="card" id="pipeAddForm" style="display:none">
         <input id="pipeTitle" placeholder="عنوان محتوا…">
         <div class="row">
           <select id="pipeCat" style="flex:1"></select>
           <select id="pipeStage" style="flex:1"></select>
         </div>
+        <div class="row">
+          <select id="pipeSource" style="flex:1"><option value="new">منبع: ایده جدید</option><option value="bank">منبع: از بانک ایده</option></select>
+        </div>
+        <input id="pipeBankRef" placeholder="کد/عنوان بانک (وقتی منبع «از بانک ایده» است)…">
         <input id="pipeNote" placeholder="یادداشت محتوا (اختیاری)…">
-        <button class="btn-teal" style="margin-top:8px" onclick="addPipeline()">＋ اضافه به خط لوله</button>
+        <div class="row" style="margin-top:8px"><button class="btn-teal" onclick="addPipeline()">＋ اضافه به خط لوله</button><button class="btn-ghost" onclick="togglePipeForm(false)">بستن</button></div>
       </div>
-      <div class="row" id="pipeCatChips" style="margin-bottom:12px"></div>
-      <div class="seg" style="margin-bottom:12px">
-        <button id="pv-stage" class="on" onclick="setPipeView('stage')">یک مرحله</button>
-        <button id="pv-list" onclick="setPipeView('list')">همهٔ مراحل</button>
+      <div class="card" style="padding:12px">
+        <div class="meta" style="margin-bottom:6px">دسته / شبکه</div>
+        <select id="pipeCatFilter" onchange="pipeCatSel=this.value;renderPipe()"></select>
       </div>
       <div id="pipeRail" class="row" style="margin-bottom:12px"></div>
       <div id="pipeList"></div>
@@ -289,7 +316,6 @@
     <section class="screen" id="scr-channels">
       <div class="card"><p style="margin:0;line-height:1.8">کانال‌های هر دسته با هندل و لینک. این فهرست دستی است و روی همین دستگاه ذخیره می‌شود؛ آمار زندهٔ پلتفرم‌ها (مثل بازدید اینستاگرام که فقط داخل اپ است) به‌صورت خودکار همگام نمی‌شود — تحلیل پنل از روی کارها، خط لوله و گزارش‌های ثبت‌شده محاسبه می‌شود.</p></div>
       <div id="chanList"></div>
-      <button class="btn-ghost" onclick="resetChannels()">بازنشانی به فهرست پیش‌فرض</button>
     </section>
 
     <!-- ============ NOTES & ASK (one screen, two segments) ============ -->
@@ -383,7 +409,20 @@ function syncPassCard(){
   } catch(e) {}
   const card = document.getElementById('passCard'), note = document.getElementById('passDone');
   if (card) card.style.display = done ? 'none' : 'block';
-  if (note) note.style.display = done ? 'block' : 'none';
+  // Fix2: the saved-password banner must NEVER appear on a load just
+  // because a password was set earlier. It shows only transiently, in
+  // the same session, right after setPassword() actually sets one.
+  if (note) {
+    if (window.__passJustSet) {
+      note.style.display = 'block';
+      if (!window.__passJustSetTimer) {
+        window.__passJustSetTimer = setTimeout(function(){
+          window.__passJustSet = false; window.__passJustSetTimer = null;
+          var n = document.getElementById('passDone'); if (n) n.style.display = 'none';
+        }, 5000);
+      }
+    } else note.style.display = 'none';
+  }
 }
 async function dismissPassCard(){
   try { localStorage.setItem('panelPassSet', '1'); } catch(e) {}
@@ -507,10 +546,10 @@ function showScreen(name, btn, push){
 function tab(name, btn){ showScreen(name, btn); } // old name kept for safety
 function fabAction(){
   if (currentScreen === 'cal') { showScreen('reports'); document.getElementById('repText').focus(); return; }
-  if (currentScreen === 'pipe') { document.getElementById('pipeTitle').focus(); window.scrollTo(0, 0); return; }
+  if (currentScreen === 'pipe') { togglePipeForm(true); window.scrollTo(0, 0); return; }
   if (currentScreen === 'reports') { document.getElementById('repText').focus(); return; }
   if (currentScreen === 'notes') { setNotesSeg('notes'); const el = document.getElementById('newNoteText'); if (el) el.focus(); return; }
-  showScreen('tasks'); setTimeout(()=>{ const el = document.getElementById('todoTitle'); if (el) el.focus(); }, 50);
+  showScreen('tasks'); setTimeout(()=>{ toggleTodoComposer(true); }, 50);
 }
 function updateFab(){
   const fab = document.getElementById('fab'); if (!fab) return;
@@ -562,7 +601,8 @@ function openMoreSheet(btn){
     '<button class="more-item" onclick="closeSheet();showScreen(\'reports\')">📝 گزارش‌ها <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'analytics\')">📈 تحلیل <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'channels\')">📡 کانال‌ها <span>‹</span></button>' +
-    '<button class="more-item" onclick="closeSheet();showScreen(\'notes\')">💡 یادداشت و پرسش <span>‹</span></button>'
+    '<button class="more-item" onclick="closeSheet();showScreen(\'notes\')">💡 یادداشت و پرسش <span>‹</span></button>' +
+    '<button class="more-item" onclick="closeSheet();goArchive()">🗄️ بایگانی کارهای انجام‌شده <span>‹</span></button>'
   );
 }
 function fillCats(){
@@ -1031,13 +1071,44 @@ function renderAgenda(){
 }
 
 // ---------- Tasks: filters, views, cards ----------
+function toggleTodoComposer(show){
+  const el = document.getElementById('todoComposer'); if (!el) return;
+  el.style.display = show ? 'block' : 'none';
+  if (show) setTimeout(()=>{ const t = document.getElementById('todoTitle'); if (t) t.focus(); }, 50);
+}
+function goArchive(){ setTaskView('archive'); showScreen('tasks'); }
+function taskStatusRank(st){ return st === 'queued' ? 0 : st === 'in_progress' ? 1 : 2; }
+function sortByDueCreated(list){
+  return list.slice().sort((a,b)=>{
+    const da = daysUntil(a.deadline), db = daysUntil(b.deadline);
+    if (da === null && db !== null) return 1;
+    if (db === null && da !== null) return -1;
+    if (da !== null && db !== null && da !== db) return da - db;
+    return (Number(b.created_at || 0) - Number(a.created_at || 0));
+  });
+}
+function sortTasksDefault(list){
+  return list.slice().sort((a,b)=>{
+    const r = taskStatusRank(a.status) - taskStatusRank(b.status); if (r) return r;
+    const da = daysUntil(a.deadline), db = daysUntil(b.deadline);
+    if (da === null && db !== null) return 1;
+    if (db === null && da !== null) return -1;
+    if (da !== null && db !== null && da !== db) return da - db;
+    return (Number(b.created_at || 0) - Number(a.created_at || 0));
+  });
+}
 function filteredTasks(){
   const me = mePerson();
   return S.todos.filter(t=>{
     const personOk = taskFilter.person === 'all' || t.assignee === 'both' || (taskFilter.person === 'mine' ? t.assignee === me : t.assignee === taskFilter.person);
     if (!personOk) return false;
     if (taskFilter.cat !== 'all' && t.category !== taskFilter.cat) return false;
-    if (taskFilter.status !== 'all' && t.status !== taskFilter.status) return false;
+    // Archive shows done tasks only. The main views exclude done tasks
+    // by default; choosing 'done' explicitly in the filter sheet still
+    // shows them in the current view.
+    if (taskView === 'archive') { if (t.status !== 'done') return false; }
+    else if (taskFilter.status !== 'all') { if (t.status !== taskFilter.status) return false; }
+    else if (t.status === 'done') return false;
     if (taskFilter.due === 'overdue') { const d = daysUntil(t.deadline); if (!(t.status !== 'done' && d !== null && d < 0)) return false; }
     if (taskFilter.due === 'week') { const d = daysUntil(t.deadline); if (!(d !== null && d >= 0 && d <= 7)) return false; }
     if (taskFilter.due === 'nodate' && t.deadline) return false;
@@ -1060,20 +1131,16 @@ function chipCount(kind, v){
   }).length;
 }
 function renderTaskChips(){
-  const chips = [
-    ['all', 'همه', 'person'], ['mine', 'فقط من', 'person'], ['amir', 'امیر', 'person'], ['negin', 'نگین', 'person'],
-    ['overdue', 'دیرکرده', 'due'], ['week', 'این هفته', 'due'], ['nodate', 'بدون مهلت', 'due'],
-  ];
+  // Fix2: no wall of chips in the middle of the screen. One compact row:
+  // the active filter (or 'all tasks') + the filter-sheet button.
   const el = document.getElementById('taskChips'); if (!el) return;
-  // Category/status filters live in the filter sheet; when any is set,
-  // the filter button itself shows the count and the active state.
   const extra = (taskFilter.cat !== 'all' ? 1 : 0) + (taskFilter.status !== 'all' ? 1 : 0);
-  let html = '<button class="filter-chip '+(extra ? 'on' : '')+'" onclick="openFilterSheet()">⚙️ فیلترها'+(extra ? ' ('+toFaDigits(extra)+')' : '')+'</button>';
-  html += chips.map(([v, label, kind])=>{
-    const on = (kind === 'person' ? taskFilter.person : taskFilter.due) === v;
-    return '<button class="filter-chip '+(on?'on':'')+'" onclick="setTaskChip(\''+kind+'\',\''+v+'\')">'+label+' ('+toFaDigits(chipCount(kind, v))+')</button>';
-  }).join('');
-  el.innerHTML = html;
+  const anyFilter = taskFilter.person !== 'all' || taskFilter.due !== 'all' || taskFilter.cat !== 'all' || taskFilter.status !== 'all';
+  const labelParts = [taskFilter.person !== 'all' ? (taskView === 'archive' ? 'بایگانی' : (ASSIGNEE[taskFilter.person] || taskFilter.person)) : '', taskFilter.due === 'overdue' ? 'دیرکرده' : taskFilter.due === 'week' ? 'این هفته' : taskFilter.due === 'nodate' ? 'بدون مهلت' : '', taskFilter.cat !== 'all' ? taskFilter.cat : '', taskFilter.status !== 'all' ? STATUS[taskFilter.status] : ''].filter(Boolean);
+  const activeLabel = taskView === 'archive' ? 'بایگانی: کارهای انجام‌شده' : (labelParts.length ? labelParts.join(' · ') : 'همهٔ کارها');
+  el.innerHTML = '<button class="filter-chip ' + (extra ? 'on' : '') + '" onclick="openFilterSheet()">⚙️ فیلترها' + (extra ? ' (' + toFaDigits(extra) + ')' : '') + '</button>' +
+    '<span class="meta">' + (anyFilter || taskView === 'archive' ? 'فیلتر فعال: ' + esc(activeLabel) : 'همهٔ کارها') + '</span>' +
+    (anyFilter ? '<button class="filter-chip" onclick="clearTaskFilters()">✕ پاک کردن</button>' : '');
 }
 function setTaskChip(kind, v){
   if (kind === 'person') taskFilter.person = v; else taskFilter.due = v;
@@ -1081,7 +1148,7 @@ function setTaskChip(kind, v){
 }
 function setTaskView(v){
   taskView = v;
-  ['list','board','mine'].forEach(x=>{ const b = document.getElementById('tv-'+x); if (b) b.classList.toggle('on', x===v); });
+  ['list','board','mine','archive'].forEach(x=>{ const b = document.getElementById('tv-'+x); if (b) b.classList.toggle('on', x===v); });
   if (v === 'mine') taskFilter.person = 'mine';
   renderTaskChips(); renderTasks();
 }
@@ -1130,13 +1197,24 @@ function renderTasks(){
   const list = filteredTasks();
   const taskAnyFilter = taskFilter.person !== 'all' || taskFilter.due !== 'all' || taskFilter.cat !== 'all' || taskFilter.status !== 'all';
   const taskFilterLabel = [taskFilter.person!=='all' ? (ASSIGNEE[taskFilter.person] || taskFilter.person) : '', taskFilter.due==='overdue' ? 'دیرکرده' : taskFilter.due==='week' ? 'این هفته' : taskFilter.due==='nodate' ? 'بدون مهلت' : '', taskFilter.cat!=='all' ? taskFilter.cat : '', taskFilter.status!=='all' ? STATUS[taskFilter.status] : ''].filter(Boolean).join(' · ');
-  const unc = sortSelfFirst(list.filter(t=>t.category==='نامشخص'));
-  const rest = sortSelfFirst(list.filter(t=>t.category!=='نامشخص'));
-  let html = taskAnyFilter ? '<div class="active-filter-banner"><span>فیلتر فعال: ' + esc(taskFilterLabel) + '</span><button class="btn-ghost btn-sm" onclick="clearTaskFilters()">پاک کردن</button></div>' : '';
+  const sorted = sortTasksDefault(list);
+  const unc = list.filter(t=>t.category==='نامشخص');
+  // The compact chip row above already shows the active filter, so the
+  // separate banner is not repeated here.
+  let html = '';
   if (unc.length) html += '<div class="meta" style="margin-bottom:12px">«نامشخص» یعنی هنوز دسته ندارد.</div>';
+  if (taskView === 'archive') {
+    // Archive: done tasks only, same card/detail/restore/delete actions.
+    // The card's tick and 'باز کردن' action restore a task to in_progress.
+    html += '<div class="meta" style="margin-bottom:10px">بایگانی فقط کارهای انجام‌شده را نشان می‌دهد؛ بایگانی کردن چیزی را پاک نمی‌کند.</div>';
+    html += sorted.length ? sorted.map(taskCardHtml).join('') : '<div class="meta">بایگانی خالی است — کار انجام‌شده‌ای نیست.</div>';
+    document.getElementById('todoList').innerHTML = html;
+    return;
+  }
   if (taskView === 'board') {
-    ['queued','in_progress','done'].forEach(st=>{
-      const items = sortSelfFirst(list.filter(t=>t.status===st));
+    const boardGroups = taskFilter.status === 'done' ? ['done'] : ['queued','in_progress'];
+    boardGroups.forEach(st=>{
+      const items = sortTasksDefault(list.filter(t=>t.status===st));
       html += '<h2>'+STATUS[st]+' ('+items.length+')</h2>' + (items.length ? items.map(taskCardHtml).join('') : '<div class="meta">کاری نیست.</div>');
     });
   } else if (taskView === 'mine') {
@@ -1154,7 +1232,7 @@ function renderTasks(){
       return 'later';
     };
     sections.forEach(([label, key])=>{
-      const items = mine.filter(t=>bucket(t)===key);
+      const items = sortByDueCreated(mine.filter(t=>bucket(t)===key));
       if (!items.length) return;
       html += '<h2>'+label+' ('+items.length+')</h2>' + items.map(taskCardHtml).join('');
     });
@@ -1166,7 +1244,7 @@ function renderTasks(){
     if (anyFilter) parts.push(toFaDigits(list.length)+' کار با این فیلترها');
     if (mePersonOrNull()) parts.push('اول کارهای تو');
     if (parts.length) html += '<div class="meta" style="margin-bottom:10px">'+parts.join(' · ')+'</div>';
-    html += unc.map(taskCardHtml).join('') + rest.map(taskCardHtml).join('');
+    html += sorted.map(taskCardHtml).join('');
     if (!list.length) html += '<div class="meta">کاری با این فیلترها نیست.</div>';
   }
   document.getElementById('todoList').innerHTML = html;
@@ -1178,7 +1256,7 @@ async function addTodo(){
   try {
     await call('addTodo', { title, deadline:document.getElementById('todoDeadline').value.trim() });
     if (detail) { try { await call('addNote', { text: '📋 جزئیات تسک «' + title + '»:\n' + detail }); } catch(e2) {} }
-    document.getElementById('todoTitle').value=''; document.getElementById('todoDetail').value=''; document.getElementById('todoDeadline').value=''; document.getElementById('todoDeadlineView').value=''; document.getElementById('catSuggest').textContent=''; await refresh();
+    document.getElementById('todoTitle').value=''; document.getElementById('todoDetail').value=''; document.getElementById('todoDeadline').value=''; document.getElementById('todoDeadlineView').value=''; document.getElementById('catSuggest').textContent=''; toggleTodoComposer(false); await refresh();
   } catch(e){ showErr(e.message); }
 }
 async function updateTodo(id, status){ try { await call('updateTodo', {id, status}); await refresh(); } catch(e){ showErr(e.message); } }
@@ -1188,12 +1266,63 @@ async function rescheduleTomorrow(id){
   try { await call('updateTodo', {id, deadline: jalaliStr(d)}); await refresh(); } catch(e){ showErr(e.message); }
 }
 
+// ---------- Task sheet: method guide (local, no new backend) ----------
+// A small local method library, keyed by task kind. It never claims a
+// live assistant analysed the task, and it never invents a page handle:
+// the sheet shows the task's own category and says plainly when a page
+// name still needs to be chosen.
+function methodLibraryFor(t){
+  const text = ((t.title || '') + ' ' + (t.category || '') + ' ' + (t.detail || '')).toLowerCase();
+  const has = (...ws) => ws.some(w => text.indexOf(w) >= 0);
+  const pageNote = 'دستهٔ این کار: ' + (t.category || 'نامشخص') + '. هندلی در اینجا ساخته یا ادعا نشده است؛ اگر نام پیج هنوز نهایی نیست، اول آن را مشخص کن.';
+  if (has('نامگذاری', 'نام پیج', 'نام صفحه', 'برند', 'لوگو', 'هندل', 'آیدی پیج')) return [
+    { name: 'نام کوتاه و قابل‌تلفظ', desc: 'نامی که در یک نفس گفته می‌شود و راحت در ذهن می‌ماند.', pros: 'یادآوری و جستجویش آسان است.', cons: 'نام‌های خوبِ کوتاه معمولاً زود گرفته می‌شوند.', needs: 'فهرست چند نام، و بررسی موقع ثبت در هر شبکه.', pageNote: pageNote, steps: ['سه کلمهٔ اصلی موضوع را بنویس', 'از ترکیب آن‌ها چند نام کوتاه بساز', 'هر نام را بلند بگو و ببین راحت تلفظ می‌شود یا نه', 'نام را موقع ثبت در هر شبکه بررسی کن؛ جستجو به‌تنهایی کافی نیست', 'نام نهایی را با یک نفر دیگر امتحان کن', 'نام و توضیح کوتاه پیج را یکجا ثبت کن'] },
+    { name: 'نام توصیفی بر اساس موضوع', desc: 'نام از دل موضوع می‌آید تا مخاطب همان اول بفهمد پیج دربارهٔ چیست.', pros: 'از همان اول موضوع روشن است.', cons: 'ممکن است بلند یا شبیه پیج‌های دیگر شود.', needs: 'موضوع دقیق پیج و چند نمونه نام.', pageNote: pageNote, steps: ['موضوع پیج را در یک جمله بنویس', 'کلمات کلیدی همان موضوع را جدا کن', 'چند نام توصیفی بساز و طولانی‌ها را کوتاه کن', 'نام را با موضوع پیج‌های مشابه مقایسه کن', 'نام را موقع ثبت در هر شبکه بررسی کن', 'نام و توضیح کوتاه پیج را یکجا ثبت کن'] },
+    { name: 'نام با پسوند مشخص', desc: 'به یک نام ساده، یک پسوند مشخص اضافه می‌شود تا یکتا شود.', pros: 'معمولاً آزادتر است و هویت یکدست می‌سازد.', cons: 'اگر پسوند بی‌ربط باشد، نام را مصنوعی می‌کند.', needs: 'نام پایه و یک پسوند مرتبط با موضوع.', pageNote: pageNote, steps: ['نام پایه را انتخاب کن', 'دو سه پسوند مرتبط با موضوع را امتحان کن', 'ترکیب نهایی را بلند بخوان و از نظر املا بررسی کن', 'ترکیب را موقع ثبت در هر شبکه بررسی کن', 'پسوند را در همهٔ شبکه‌ها یکسان نگه دار', 'نام و توضیح کوتاه پیج را یکجا ثبت کن'] },
+  ];
+  if (has('تیک‌تاک', 'tiktok', 'ریل', 'reel', 'ویدیو', 'video', 'کلیپ', 'فیلم')) return [
+    { name: 'فیلم‌برداری زنده با خودتان', desc: 'خودت جلوی دوربین یک صحنهٔ واقعی می‌گیری؛ بدون انیمیشن و بدون ویدیوی آماده.', pros: 'واقعی و قابل‌اعتماد است؛ مخاطب حس می‌کند واقعاً اتفاق افتاده.', cons: 'زمان، مکان و نور می‌خواهد؛ اگر صحنه خراب شود باید دوباره بگیری.', needs: 'گوشی، نور خوب، یک صحنهٔ ساده و یک جملهٔ اصلی.', pageNote: pageNote, steps: ['یک جملهٔ اصلی بنویس: این ویدیو دقیقاً چه چیزی را می‌خواهد بگوید؟', 'صحنه را با وسایل دم‌دست بچین و یک بار آزمایشی بگیر', 'نسخهٔ اصلی را در چند برداشت کوتاه بگیر', 'بهترین برداشت را انتخاب و اضافه‌ها را ببر', 'متن فارسی کوتاه روی ویدیو بگذار و صدای اصلی را نگه دار', 'پیش از انتشار، یک بار کامل با صدا ببین و بعد منتشر کن'] },
+    { name: 'تدوین ویدیوی آماده با متن فارسی', desc: 'از یک ویدیوی موجود شروع می‌کنی و آن را با متن و صدای فارسی برای پیج خودت بازسازی می‌کنی.', pros: 'سریع‌تر از فیلم‌برداری است و ساختار آماده دارد.', cons: 'اگر فقط کپی شود، تکراری به نظر می‌رسد؛ باید پیامش را عوض کنی.', needs: 'ویدیوی مرجع، متن فارسی کوتاه، ابزار تدوین ساده.', pageNote: pageNote, steps: ['پیام ویدیوی مرجع را در یک جمله بنویس', 'سناریو را با مثال و زبان خودت بازنویسی کن', 'نماهای لازم را انتخاب و به ترتیب بچین', 'متن فارسی را کوتاه و خوانا روی نماها بگذار', 'صدا را با پیام هماهنگ کن؛ آهنگ نباید پیام را بپوشاند', 'نسخهٔ نهایی را کامل ببین و بعد منتشر کن'] },
+    { name: 'ساخت انیمیشن یا تصویر متحرک', desc: 'صحنه با انیمیشن یا تصویر ساخته می‌شود، نه فیلم‌برداری واقعی.', pros: 'برای صحنه‌های غیرممکن در دنیای واقعی خوب است.', cons: 'زمان و ابزار بیشتری می‌خواهد و ممکن است مصنوعی به نظر برسد.', needs: 'ابزار ساخت تصویر یا انیمیشن، سناریوی تصویری، صدا.', pageNote: pageNote, steps: ['هر صحنه را در یک جمله توصیف کن', 'شخصیت و فضا را یکدست نگه دار', 'صحنه‌ها را به ترتیب بساز و کنار هم بگذار', 'صدا و متن فارسی را اضافه کن', 'حرکت‌ها را روان و طبیعی بررسی کن', 'نسخهٔ نهایی را کامل ببین و بعد منتشر کن'] },
+  ];
+  if (has('شاهنامه', 'اساطیر', 'محتوا', 'قسمت', 'اپیزود', 'خط لوله', 'سری')) return [
+    { name: 'ساخت مرحله‌به‌مرحله از ایده تا انتشار', desc: 'محتوا از ایده شروع می‌شود و هر مرحله جداگانه کامل می‌شود.', pros: 'هر مرحله قابل بازبینی است و چیزی گم نمی‌شود.', cons: 'اگر در یک مرحله گیر کند، کل کار می‌ایستد.', needs: 'سناریو، زمان ساخت و بازبینی.', pageNote: pageNote, steps: ['ایده و پیام اصلی را در یک جمله بنویس', 'سناریو را کامل بنویس و یک نفر دیگر آن را بخواند', 'محتوا را بساز و نسخهٔ اول را نگه دار', 'تدوین را انجام بده و اضافه‌ها را ببر', 'بازبینی نهایی را با صدا و متن انجام بده', 'منتشر کن و بازخورد اول را یادداشت کن'] },
+    { name: 'ساخت سریع نسخهٔ اول، بعد پرداخت', desc: 'اول یک نسخهٔ قابل انتشار بساز، بعد همان را بهتر کن.', pros: 'زود به نتیجه می‌رسی و بازخورد واقعی می‌گیری.', cons: 'نسخهٔ اول ممکن است ناقص به نظر برسد.', needs: 'سناریوی کوتاه و ابزار ساخت سریع.', pageNote: pageNote, steps: ['ساده‌ترین نسخهٔ قابل انتشار را مشخص کن', 'همان نسخه را بساز و منتشر کن', 'بازخوردها را در سه نکته خلاصه کن', 'همان سه نکته را در نسخهٔ بعد اصلاح کن', 'نسخهٔ بهتر را جایگزین کن', 'نکته‌های یادگرفته‌شده را برای قسمت بعد بنویس'] },
+    { name: 'تقسیم کار با همکار', desc: 'کار به دو بخش تقسیم می‌شود و هر نفر یک بخش را جلو می‌برد.', pros: 'سریع‌تر پیش می‌رود و هر بخش یک صاحب دارد.', cons: 'اگر تقسیم روشن نباشد، کارها روی هم می‌افتند.', needs: 'تقسیم روشن وظایف و زمان تحویل هر بخش.', pageNote: pageNote, steps: ['کار را به دو بخش مستقل تقسیم کن', 'برای هر بخش یک صاحب و یک مهلت مشخص کن', 'بخش‌ها را جداگانه بسازید', 'دو بخش را کنار هم بگذار و ناهماهنگی‌ها را بگیر', 'بازبینی نهایی را با هم انجام بدهید', 'منتشر کن و نتیجه را هر دو ببینید'] },
+  ];
+  return [
+    { name: 'سریع‌ترین مسیر', desc: 'ساده‌ترین نسخه‌ای که کار را انجام می‌دهد، بدون جزئیات اضافه.', pros: 'زود تمام می‌شود.', cons: 'ممکن است بعداً نیاز به بازسازی داشته باشد.', needs: 'فقط ابزار و زمان لازم برای نسخهٔ ساده.', pageNote: pageNote, steps: ['نتیجهٔ قابل قبول را در یک جمله مشخص کن', 'ساده‌ترین راه رسیدن به آن را انتخاب کن', 'همان را بساز و تحویل بده', 'اگر جایی خراب شد، همان‌جا را اصلاح کن', 'نتیجه را یک بار کامل بررسی کن'] },
+    { name: 'کامل‌ترین مسیر', desc: 'کار با همهٔ جزئیات و بازبینی‌ها انجام می‌شود.', pros: 'نتیجهٔ نهایی تمیز و قابل دفاع است.', cons: 'زمان بیشتری می‌برد.', needs: 'زمان کافی، بازبینی و فهرست جزئیات.', pageNote: pageNote, steps: ['همهٔ جزئیات لازم را فهرست کن', 'هر جزئیات را جداگانه کامل کن', 'نسخهٔ کامل را یک بار از اول تا آخر بررسی کن', 'نقص‌ها را اصلاح کن', 'نتیجهٔ نهایی را تحویل بده'] },
+    { name: 'با همکاری', desc: 'کار بین دو نفر تقسیم می‌شود تا هر بخش یک صاحب داشته باشد.', pros: 'سریع‌تر و با دید دوم انجام می‌شود.', cons: 'بدون تقسیم روشن، کارها قاطی می‌شوند.', needs: 'تقسیم روشن و زمان تحویل.', pageNote: pageNote, steps: ['کار را به بخش‌های مستقل تقسیم کن', 'برای هر بخش یک صاحب مشخص کن', 'بخش‌ها را جداگانه انجام بدهید', 'بخش‌ها را کنار هم بگذار و ناهماهنگی‌ها را بگیر', 'نتیجهٔ نهایی را با هم بررسی و تحویل بدهید'] },
+  ];
+}
+function methodGuideHtml(){
+  if (!TS) return '';
+  if (!TS.methodGuide) return '<p class="meta">برای دیدن ۳ روش، دکمهٔ «تحلیل روش‌های انجام» را بزن. این روش‌ها پیشنهاد داخل پنل‌اند، نه تحلیل زندهٔ دستیار.</p>';
+  return TS.methodGuide.map((m, i)=>{
+    return '<div class="method-card"><b>' + esc(m.name) + '</b>' +
+      '<div style="line-height:1.8;margin-top:4px">' + esc(m.desc) + '</div>' +
+      '<div class="meta" style="margin-top:6px">👍 ' + esc(m.pros) + ' &nbsp;·&nbsp; 👎 ' + esc(m.cons) + '</div>' +
+      '<div class="meta">نیاز دارد: ' + esc(m.needs) + '</div>' +
+      '<div class="meta">' + esc(m.pageNote) + '</div>' +
+      '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="chooseMethod(' + i + ')">انتخاب این روش</button></div>';
+  }).join('');
+}
+function showMethodGuide(){ if (!TS) return; TS.methodGuide = methodLibraryFor(TS); TS.chosenMethod = null; renderTaskSheet(); }
+function chooseMethod(i){
+  if (!TS || !TS.methodGuide || !TS.methodGuide[i]) return;
+  const m = TS.methodGuide[i];
+  TS.chosenMethod = m.name;
+  TS.steps = m.steps.map(s=>({ id: null, text: s, done: false }));
+  renderTaskSheet();
+}
+
 // ---------- Task sheet (bottom sheet, in-place editing via updateTodo) ----------
 function openTaskSheet(id){
   const t = S.todos.find(x=>x.id===id); if (!t) return;
   const steps = stepsFor(id);
   const detailNote = taskDetailNote(t);
-  TS = { id: t.id, createdAt: t.created_at, title: t.title, status: t.status, assignee: t.assignee, category: t.category, priority: t.priority, deadline: t.deadline || '', detail: taskDetail(t), hasServerDetail: !!detailNote, detailNoteId: detailNote ? detailNote.id : null, steps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})), serverSteps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})) };
+  TS = { id: t.id, createdAt: t.created_at, title: t.title, status: t.status, assignee: t.assignee, category: t.category, priority: t.priority, deadline: t.deadline || '', methodGuide: null, chosenMethod: null, detail: taskDetail(t), hasServerDetail: !!detailNote, detailNoteId: detailNote ? detailNote.id : null, steps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})), serverSteps: steps.map(s=>({id: s.id, text: s.text, done: !!s.done, position: s.position})) };
   renderTaskSheet();
 }
 function renderTaskSheet(){
@@ -1221,9 +1350,13 @@ function renderTaskSheet(){
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'week\')">هفتهٔ بعد</button>' +
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'\')">بدون مهلت</button>' +
     '<button class="btn-ghost btn-sm" onclick="openSheetPicker()">📅 تقویم</button></div>' +
-    '<p class="meta">راهنمای انجام — چند راه‌حل بنویس؛ هر راه در یک خط</p><textarea id="guideText" oninput="TS.detail=this.value;renderGuidePreview()" style="min-height:110px">'+esc(TS.detail)+'</textarea>' +
+    '<p class="meta">یادداشت راهنما (اختیاری) — چند راه‌حل بنویس؛ هر راه در یک خط</p><textarea id="guideText" oninput="TS.detail=this.value;renderGuidePreview()" style="min-height:110px">'+esc(TS.detail)+'</textarea>' +
     '<div class="row" style="margin-top:2px"><button class="btn-ghost btn-sm" onclick="addGuideLine()">＋ راه‌حل تازه</button></div>' +
     '<div id="guidePreview" style="margin-top:8px">'+guideListHtml(TS.detail)+'</div>' +
+    '<h2>راهنمای انجام</h2><p class="meta">روش‌های پیشنهادی داخل پنل — قابل ویرایش توسط شما؛ این بخش تحلیل زندهٔ دستیار نیست.</p>' +
+    (TS.chosenMethod ? '<div class="meta">روش انتخاب‌شده: ' + esc(TS.chosenMethod) + ' — گام‌های زیر از همین روش‌اند.</div>' : '') +
+    '<div class="row" style="margin-bottom:10px"><button class="btn-teal btn-sm" onclick="showMethodGuide()">تحلیل روش‌های انجام</button></div>' +
+    '<div id="methodGuideBox">' + methodGuideHtml() + '</div>' +
     '<h2>گام‌ها</h2>' +
     (TS.steps.length ? stepsHtml : '<p class="meta">هنوز گامی نیست.</p>') +
     '<div class="row" style="margin-top:8px"><button class="btn-ghost btn-sm" onclick="addSheetStep()">＋ گام تازه</button><button class="btn-ghost btn-sm" onclick="breakIntoSteps()">✦ شکستن به گام‌ها</button></div>' +
@@ -1386,68 +1519,75 @@ function renderReports(){
 }
 
 // ---------- Pipeline: one stage page at a time under a 6-step rail ----------
-function renderPipeCatChips(){
-  const el = document.getElementById('pipeCatChips'); if (!el || !S) return;
-  el.innerHTML = '<button class="filter-chip '+(pipeCatSel==='all'?'on':'')+'" onclick="pipeCatSel=\'all\';renderPipeCatChips();renderPipe()">همه</button>' +
-    S.categories.map(c=>'<button class="filter-chip '+(pipeCatSel===c?'on':'')+'" onclick="pipeCatSel=\''+c+'\';renderPipeCatChips();renderPipe()">'+esc(c)+'</button>').join('');
+let pipeDetailOpen = {};
+function togglePipeForm(show){ const f = document.getElementById('pipeAddForm'); if (f) f.style.display = show ? 'block' : 'none'; if (show) { const t = document.getElementById('pipeTitle'); if (t) t.focus(); } }
+function pipeSourceOf(p){
+  const n = String(p.note || '');
+  if (n.indexOf('منبع: از بانک ایده') === 0) return 'از بانک ایده';
+  if (n.indexOf('منبع: ایده جدید') === 0) return 'ایده جدید';
+  return null;
 }
-function setPipeView(v){
-  pipeView = v;
-  document.getElementById('pv-stage').classList.toggle('on', v==='stage');
-  document.getElementById('pv-list').classList.toggle('on', v==='list');
-  renderPipe();
+function pipeNoteBody(p){
+  const n = String(p.note || '');
+  const nl = n.indexOf('\n');
+  if (n.indexOf('منبع:') === 0 && nl >= 0) return n.slice(nl + 1).trim();
+  return n;
 }
-function pipeAgeDays(p){
-  if (!p.created_at) return null;
-  return Math.floor((Date.now()/1000 - p.created_at) / 86400);
-}
+function togglePipeDetail(id){ pipeDetailOpen[id] = !pipeDetailOpen[id]; renderPipe(); }
 function pipeCardHtml(p){
   const age = pipeAgeDays(p);
   const stuck = (p.stage < 5 && age !== null && age > 14);
-  return '<div class="card item"><div class="title">'+esc(p.title)+'<span class="stage">'+STAGES[p.stage]+'</span></div>' +
-    '<div class="meta" style="margin-top:6px">'+esc(p.category) + (stuck ? ' · <span style="color:#d97706;font-weight:700">گیرکرده · '+toFaDigits(age)+' روز</span>' : '') + '</div>' +
+  const src = pipeSourceOf(p);
+  const open = !!pipeDetailOpen[p.id];
+  const body = pipeNoteBody(p);
+  let html = '<div class="card item"><div class="title">'+esc(p.title)+'</div>' +
+    '<div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="tag">'+esc(p.category)+'</span><span class="tag teal">'+STAGES[p.stage]+'</span>' +
+    (src ? '<span class="tag">منبع: '+esc(src)+'</span>' : '') +
+    (stuck ? '<span style="color:#d97706;font-weight:700">گیرکرده · '+toFaDigits(age)+' روز</span>' : '') + '</div>' +
     '<div class="row" style="margin-top:10px">' +
-    (p.stage>0 ? '<button class="btn-ghost btn-sm" onclick="movePipe('+p.id+','+(p.stage-1)+')">› مرحله قبل</button>' : '') +
-    (p.stage<5 ? '<button class="btn-teal btn-sm" onclick="movePipe('+p.id+','+(p.stage+1)+')">مرحله بعد ‹</button>' : '') +
-    '<button class="btn-danger btn-sm" onclick="deletePipe('+p.id+')">حذف</button></div></div>';
+    (p.stage<5 ? '<button class="btn-teal btn-sm" onclick="movePipe('+p.id+','+(p.stage+1)+')">مرحله بعد ‹</button>' : '<span class="meta">منتشر شده ✓</span>') +
+    '<button class="btn-ghost btn-sm" onclick="togglePipeDetail('+p.id+')">'+(open ? 'بستن جزئیات' : 'جزئیات')+'</button></div>';
+  if (open) {
+    html += '<div style="margin-top:10px">' + (body ? '<div style="line-height:1.8;white-space:pre-wrap">'+esc(body)+'</div>' : '<div class="meta">یادداشتی نیست.</div>') +
+      '<div class="row" style="margin-top:10px">' +
+      (p.stage>0 ? '<button class="btn-ghost btn-sm" onclick="movePipe('+p.id+','+(p.stage-1)+')">› مرحله قبل</button>' : '') +
+      '<button class="btn-danger btn-sm" onclick="deletePipe('+p.id+')">حذف</button></div></div>';
+  }
+  return html + '</div>';
 }
 function renderPipe(){
   if (!S) return;
   const filtered = S.pipeline.filter(p=>pipeCatSel==='all' || p.category===pipeCatSel);
-  // Add form follows the selected category filter (instead of always
-  // resetting to نامشخص in fillCats).
   const pipeCatEl = document.getElementById('pipeCat'); if (pipeCatEl && pipeCatSel !== 'all') pipeCatEl.value = pipeCatSel;
-  const railEl = document.getElementById('pipeRail'); if (railEl) railEl.classList.toggle('sticky-rail', pipeView === 'list');
-  const pipeAnyFilter = pipeCatSel !== 'all' || pipeStageSel !== 0;
-  const pipeFilterLabel = [pipeCatSel!=='all' ? pipeCatSel : '', pipeStageSel!==0 ? STAGES[pipeStageSel] : ''].filter(Boolean).join(' · ');
-  document.getElementById('stageCounts').innerHTML = STAGES.map((s,i)=>{
-    const n = S.pipeline.filter(p=>p.stage===i).length;
-    return '<span class="tag '+(i===5?'teal':'')+'">'+s+': '+toFaDigits(n)+'</span>';
-  }).join(' ');
-  document.getElementById('stageLegend').innerHTML = STAGES.map((s,i)=>'<div class="meta" style="margin-bottom:4px"><b>'+s+'</b> — '+STAGE_DESC[s]+'</div>').join('');
-  document.getElementById('pipeRail').innerHTML = STAGES.map((s,i)=>{
-    const n = filtered.filter(p=>p.stage===i).length;
-    return '<button class="filter-chip '+(pipeStageSel===i && pipeView==='stage'?'on':'')+'" onclick="pipeStageSel='+i+';setPipeView(\'stage\')">'+s+' ('+toFaDigits(n)+')</button>';
-  }).join('');
-  let html = pipeAnyFilter ? '<div class="active-filter-banner"><span>فیلتر فعال: ' + esc(pipeFilterLabel) + '</span><button class="btn-ghost btn-sm" onclick="clearPipeFilters()">پاک کردن</button></div>' : '';
-  if (pipeView === 'stage') {
-    const items = filtered.filter(p=>p.stage===pipeStageSel);
-    html = '<h2>'+STAGES[pipeStageSel]+' ('+items.length+')</h2>' + (items.length ? items.map(pipeCardHtml).join('') : '<div class="meta">در این مرحله محتوایی نیست.</div>');
-  } else {
-    STAGES.forEach((s,i)=>{
-      const items = filtered.filter(p=>p.stage===i);
-      html += '<h2>'+s+' ('+items.length+')</h2>' + (items.length ? items.map(pipeCardHtml).join('') : '<div class="meta">محتوایی نیست.</div>');
-    });
+  const filterEl = document.getElementById('pipeCatFilter');
+  if (filterEl) {
+    const opts = '<option value="all">همهٔ دسته‌ها</option>' + S.categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
+    if (filterEl.innerHTML !== opts) filterEl.innerHTML = opts;
+    filterEl.value = pipeCatSel;
   }
-  document.getElementById('pipeList').innerHTML = html;
+  const legendEl = document.getElementById('stageLegend');
+  if (legendEl) legendEl.innerHTML = STAGES.map((s,i)=>'<div class="meta" style="margin-bottom:4px"><b>'+s+'</b> — '+STAGE_DESC[s]+'</div>').join('');
+  const railEl = document.getElementById('pipeRail');
+  if (railEl) railEl.innerHTML = STAGES.map((s,i)=>{
+    const n = filtered.filter(p=>p.stage===i).length;
+    return '<button class="filter-chip '+(pipeStageSel===i?'on':'')+'" onclick="pipeStageSel='+i+';renderPipe()">'+s+' ('+toFaDigits(n)+')</button>';
+  }).join('');
+  const items = filtered.filter(p=>p.stage===pipeStageSel);
+  const banner = pipeCatSel !== 'all' ? '<div class="active-filter-banner"><span>فیلتر فعال: ' + esc(pipeCatSel) + '</span><button class="btn-ghost btn-sm" onclick="clearPipeFilters()">پاک کردن</button></div>' : '';
+  document.getElementById('pipeList').innerHTML = banner + '<h2>'+STAGES[pipeStageSel]+' ('+items.length+')</h2>' + (items.length ? items.map(pipeCardHtml).join('') : '<div class="meta">در این مرحله محتوایی نیست.</div>');
 }
-function goPipeStage(i){ pipeStageSel = i; pipeView = 'stage'; showScreen('pipe'); renderPipe(); }
-function clearPipeFilters(){ pipeCatSel = 'all'; pipeStageSel = 0; pipeView = 'stage'; renderPipeCatChips(); renderPipe(); }
-function goPipeCat(c){ pipeCatSel = c; pipeStageSel = 0; pipeView = 'stage'; showScreen('pipe'); renderPipeCatChips(); renderPipe(); }
+function goPipeStage(i){ pipeStageSel = i; showScreen('pipe'); renderPipe(); }
+function clearPipeFilters(){ pipeCatSel = 'all'; pipeStageSel = 0; renderPipe(); }
+function goPipeCat(c){ pipeCatSel = c; pipeStageSel = 0; showScreen('pipe'); renderPipe(); }
 async function addPipeline(){
   const title = document.getElementById('pipeTitle').value.trim();
   if (!title) return showErr('عنوان محتوا را بنویسید');
-  try { await call('addPipeline', { title, category:document.getElementById('pipeCat').value, stage:parseInt(document.getElementById('pipeStage').value), note:document.getElementById('pipeNote').value.trim() }); document.getElementById('pipeTitle').value=''; document.getElementById('pipeNote').value=''; await refresh(); } catch(e){ showErr(e.message); }
+  const src = document.getElementById('pipeSource').value;
+  const ref = document.getElementById('pipeBankRef').value.trim();
+  if (src === 'bank' && !ref) return showErr('برای منبع «از بانک ایده»، کد یا عنوان بانک را بنویسید');
+  const userNote = document.getElementById('pipeNote').value.trim();
+  const note = (src === 'bank' ? 'منبع: از بانک ایده · کد/عنوان: ' + ref : 'منبع: ایده جدید') + (userNote ? '\n' + userNote : '');
+  try { await call('addPipeline', { title, category:document.getElementById('pipeCat').value, stage:parseInt(document.getElementById('pipeStage').value), note }); document.getElementById('pipeTitle').value=''; document.getElementById('pipeNote').value=''; document.getElementById('pipeBankRef').value=''; togglePipeForm(false); await refresh(); } catch(e){ showErr(e.message); }
 }
 async function movePipe(id, stage){ try { await call('movePipeline', {id, stage}); await refresh(); } catch(e){ showErr(e.message); } }
 async function deletePipe(id){ try { await call('deletePipeline', {id}); await refresh(); } catch(e){ showErr(e.message); } }
@@ -1563,6 +1703,21 @@ function chanInput(cat, idx, val){
   saveChannels(data);
 }
 function resetChannels(){ try { localStorage.removeItem('panelChannelsV1'); } catch(e) {} renderChannels(); }
+let chanEditOpen = {};
+function toggleChanEdit(cat){ chanEditOpen[cat] = !chanEditOpen[cat]; renderChannels(); }
+function chanBadge(net){
+  if (net === 'اینستاگرام') return '📷';
+  if (net === 'یوتیوب') return '▶️';
+  if (net === 'آپارات') return '🎬';
+  if (net === 'تیک‌تاک') return '🎵';
+  return '🔗';
+}
+function chanDot(status){
+  const st = String(status || '');
+  if (st.indexOf('فعال') === 0) return '#2dd4bf';
+  if (st.indexOf('موقت') >= 0 || st.indexOf('تغییر') >= 0) return '#f59e0b';
+  return '#9ca3af';
+}
 function renderChannels(){
   const el = document.getElementById('chanList'); if (!el || !S) return;
   const data = loadChannels();
@@ -1570,13 +1725,17 @@ function renderChannels(){
     const pipeN = S.pipeline.filter(p=>p.category===cat).length;
     const todoN = S.todos.filter(t=>t.category===cat).length;
     const repN = S.reports.filter(r=>r.category===cat).length;
+    const editing = !!chanEditOpen[cat];
     const rows = (data[cat] && data[cat].length) ? data[cat].map((ch, i)=>{
-      const link = ch.url ? '<a href="'+esc(ch.url)+'" target="_blank" rel="noopener">'+esc(ch.url)+'</a>' : '<span class="meta">بدون لینک</span>';
-      return '<div class="chan-row"><b style="min-width:86px">'+esc(ch.net)+'</b><input value="'+esc(ch.handle)+'" placeholder="هندل…" onchange="chanInput(\''+cat+'\','+i+',this.value)" style="flex:1"><span class="tag">'+esc(ch.status)+'</span></div><div style="margin-bottom:10px">'+link+'</div>';
+      const arrow = ch.url ? '<a href="'+esc(ch.url)+'" target="_blank" rel="noopener" aria-label="باز کردن لینک" style="text-decoration:none;font-size:1.2rem;flex:none">↗</a>' : '<span class="meta" style="flex:none">بدون لینک</span>';
+      const viewRow = '<div class="chan-row2"><span class="chan-badge">'+chanBadge(ch.net)+'</span><div style="flex:1;min-width:0"><div>'+esc(ch.net)+'</div><div class="chan-handle" dir="ltr" style="text-align:left">'+esc(ch.handle || '— بدون هندل')+'</div></div><span class="chan-dot" style="background:'+chanDot(ch.status)+'"></span><span class="meta" style="white-space:nowrap">'+esc(ch.status)+'</span>'+arrow+'</div>';
+      const editRow = editing ? '<div class="chan-row"><b style="min-width:86px">'+esc(ch.net)+'</b><input value="'+esc(ch.handle)+'" placeholder="هندل…" onchange="chanInput(\''+cat+'\','+i+',this.value)" style="flex:1"></div>' : '';
+      return viewRow + editRow;
     }).join('') : '<div class="meta">هنوز کانالی برای این دسته ثبت نشده.</div>';
-    return '<div class="card"><div class="row" style="justify-content:space-between"><b>'+esc(cat)+'</b><button class="btn-ghost btn-sm" onclick="goPipeCat(\''+cat+'\')">دیدن موارد</button></div>' +
-      '<div class="meta" style="margin-top:6px">خط لوله '+pipeN+' · کارها '+todoN+' · گزارش‌ها '+repN+'</div>' +
-      '<div style="margin-top:10px">'+rows+'</div></div>';
+    const editBlock = editing ? '<div style="margin-top:10px"><button class="btn-ghost btn-sm" onclick="resetChannels()">بازنشانی به فهرست پیش‌فرض</button></div>' : '';
+    return '<div class="card"><div class="chan-head"><div><b>'+esc(cat)+'</b><div class="meta">خط لوله '+pipeN+' · کارها '+todoN+' · گزارش‌ها '+repN+'</div></div><button class="btn-ghost btn-sm" onclick="goPipeCat(\''+cat+'\')">دیدن موارد</button></div>' +
+      '<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn-ghost btn-sm" onclick="toggleChanEdit(\''+cat+'\')">'+(editing ? 'پایان ویرایش' : 'ویرایش')+'</button></div>' +
+      '<div style="margin-top:4px">'+rows+'</div>' + editBlock + '</div>';
   }).join('');
 }
 
@@ -1668,6 +1827,7 @@ async function setPassword(){
     if (res.error) throw new Error(res.error.message);
     try { localStorage.setItem('panelPassSet', '1'); } catch(e) {}
     document.getElementById('newPass').value = '';
+    window.__passJustSet = true; window.__passJustSetTimer = null;
     syncPassCard();
   } catch(e){ msg.textContent = 'خطا: ' + e.message; }
 }
