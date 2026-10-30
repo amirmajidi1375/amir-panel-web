@@ -312,7 +312,8 @@
 
     <!-- ============ CHANNELS (simple directory, localStorage as before) ============ -->
     <section class="screen" id="scr-channels">
-      <div class="card"><p style="margin:0;line-height:1.8">کانال‌های هر دسته با هندل و لینک. این فهرست دستی است و روی همین دستگاه ذخیره می‌شود؛ آمار زندهٔ پلتفرم‌ها (مثل بازدید اینستاگرام که فقط داخل اپ است) به‌صورت خودکار همگام نمی‌شود — تحلیل پنل از روی کارها، خط لوله و گزارش‌های ثبت‌شده محاسبه می‌شود. توجه: ویرایش کانال‌ها فعلاً فقط روی همین دستگاه ذخیره می‌شود؛ تا جدول مشترک کانال‌ها (قدم یک یکپارچه‌سازی) ساخته نشود، ویرایش روی یک دستگاه روی دستگاه دیگر دیده نمی‌شود.</p></div>
+      <div class="card"><p style="margin:0;line-height:1.8">کانال‌های هر دسته با هندل و لینک. این فهرست دستی است و روی همین دستگاه ذخیره می‌شود؛ آمار زندهٔ پلتفرم‌ها (مثل بازدید اینستاگرام که فقط داخل اپ است) به‌صورت خودکار همگام نمی‌شود — تحلیل پنل از روی کارها، خط لوله و گزارش‌های ثبت‌شده محاسبه می‌شود. توجه: ویرایش کانال‌ها فعلاً فقط روی همین دستگاه ذخیره می‌شود؛ تا جدول مشترک کانال‌ها (قدم یک یکپارچه‌سازی) ساخته نشود، ویرایش روی یک دستگاه روی دستگاه دیگر دیده نمی‌شود. برای آوردن فهرست به‌روز، دکمه «🔄 به‌روزرسانی کانال‌ها» در بالای همین صفحه را بزن.</p></div>
+      <div class="card"><button class="btn-teal" id="chanRefreshBtn" onclick="refreshChannels()" style="width:100%">🔄 به‌روزرسانی کانال‌ها</button><p class="meta" style="margin:8px 0 0;line-height:1.8">این دکمه حافظه کانال‌های همین دستگاه را پاک می‌کند و فهرست به‌روز را می‌آورد؛ ویرایش‌هایی که فقط روی همین دستگاه انجام شده بود، پاک می‌شود.</p><div id="chanRefreshMsg" class="meta" style="margin:8px 0 0;line-height:1.8"></div></div>
       <div id="chanList"></div>
     </section>
 
@@ -1966,6 +1967,7 @@ function chanInput(cat, idx, val){
   saveChannels(data);
 }
 function resetChannels(){ try { localStorage.removeItem('panelChannelsV1'); } catch(e) {} renderChannels(); }
+function refreshChannels(){ try { localStorage.removeItem('panelChannelsV1'); } catch(e) {} renderChannels(); const m = document.getElementById('chanRefreshMsg'); if (m) m.textContent = 'کانال‌ها به‌روز شد ✅'; }
 let chanEditOpen = {};
 function toggleChanEdit(cat){ chanEditOpen[cat] = !chanEditOpen[cat]; renderChannels(); }
 function chanBadge(net){
