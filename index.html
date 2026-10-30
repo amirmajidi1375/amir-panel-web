@@ -27,7 +27,21 @@
   body { margin:0; background:var(--bg); color:var(--txt); font-family:'Vazirmatn',Tahoma,sans-serif; padding-bottom:156px; }
   header { position:sticky; top:0; z-index:5; background:var(--head); padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); gap:8px; }
   header h1 { font-size:1.05rem; margin:0; flex:1; }
-  .chip { background:var(--teal); color:#06251f; font-weight:700; font-size:.8rem; padding:4px 10px; border-radius:999px; }
+  .chip { background:var(--teal); color:#06251f; font-weight:700; font-size:.8rem; padding:4px 10px; border-radius:999px; white-space:nowrap; }
+  /* Fix19 card layout: vertical stack, RTL-safe, nothing clipped at a card edge.
+     Root cause of clipped pills: one cramped summary line (title + pill + count)
+     inside .card{overflow:hidden} in RTL overflowed sideways and got cut.
+     Now: line 1 = chevron + title only (wraps); line 2 = pill + count on their
+     own wrapping row; card overflow is visible; padding is generous. */
+  details.stage-card > summary { list-style:none; }
+  details.stage-card > summary::-webkit-details-marker { display:none; }
+  .stage-summary { display:flex; flex-direction:column; gap:8px; align-items:stretch; }
+  .stage-summary .stage-title-row { display:flex; gap:8px; align-items:flex-start; }
+  .stage-summary .stage-chev { flex:none; line-height:1.9; }
+  .stage-summary .stage-title { flex:1; min-width:0; overflow-wrap:anywhere; }
+  .stage-summary .stage-meta-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  details.stage-card { overflow:visible; padding:16px; margin-bottom:14px; }
+  details.stage-main { overflow:visible; padding:16px; border:2px solid #2dd4bf; }
   main { padding:16px; max-width:720px; margin:0 auto; }
   section.screen { display:none; } section.screen.on { display:block; }
   h2 { font-size:1rem; margin:16px 0 8px; }
@@ -1139,11 +1153,12 @@ function homeTaskCard(t, showMethods){
   const d = daysUntil(t.deadline);
   const dueLabel = (d !== null && d < 0) ? '🔴 دیرکرده · ' + due : (d === 0 ? '🟠 امروز · ' + due : due);
   const steps = homeStepsChecklist(t);
+  const stagedHere = isStagedTask({ title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee });
   const methodsBtn = '<button class="btn-ghost btn-sm" onclick="openTaskView('+t.id+')">راهنمای انجام ←</button>';
   return '<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="flex:1;min-width:0"><b style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</b>' +
     '<div class="meta" style="margin-top:4px">'+esc(t.category || 'نامشخص')+' · '+esc(ASSIGNEE[t.assignee] || t.assignee)+' · '+dueLabel+'</div></div>' + methodsBtn + '</div>' +
-    '<div style="margin-top:6px">' + (function(){ var tt = { title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee }; var pl = guidePlain(tt); return pl ? '<b>یعنی چی:</b> ' + esc(pl) : '<b>هدف:</b> ' + esc(tailoredGuideFor(tt).goal); })() + '</div>' +
-    (steps ? '<div style="margin-top:8px"><b>To Do</b>' + steps + '</div>' : '<div class="meta" style="margin-top:8px">هنوز گامی نیست — برگهٔ کار را باز کن و «ساختن گام‌ها از راهنما» را بزن.</div>') + '</div>';
+    (stagedHere ? homePageChips([t]) : '<div style="margin-top:6px">' + (function(){ var tt = { title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee }; var pl = guidePlain(tt); return pl ? '<b>یعنی چی:</b> ' + esc(pl) : '<b>هدف:</b> ' + esc(tailoredGuideFor(tt).goal); })() + '</div>' +
+    (steps ? '<div style="margin-top:8px"><b>To Do</b>' + steps + '</div>' : '<div class="meta" style="margin-top:8px">هنوز گامی نیست — برگهٔ کار را باز کن و «ساختن گام‌ها از راهنما» را بزن.</div>')) + '</div>';
 }
 function toggleHomeClamp(id, btn){
   const d = document.getElementById('homeNextDesc' + id); if (!d || !btn) return;
@@ -1168,19 +1183,38 @@ function homeThemeGroup(list){
   });
   return group.length >= 2 ? group : null;
 }
+// Fix19: Home NEVER renders step/guide text for staged tasks — that was the
+// 'صفحه اول افتضاحه' wall of text (homeGroupLines used to append the full
+// homeStepsChecklist under each grouped task). Grouped and today cards for
+// staged tasks show only: task titles (tap targets), per-page status chips,
+// and one button that opens the task sheet. Step text lives only inside
+// the task sheet's own cards.
+function homePageChips(group){
+  const short = { 'روانشناسی': 'TitanStation', 'شاهنامه': 'PreTime', 'شده دیگه': 'شده دیگه', 'گربه‌ها': 'گربه‌ها', 'همکار': 'همکار' };
+  return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' + STAGE_ORDER.map(function(cat, i){
+    let st = '⏳';
+    group.forEach(function(t){
+      const tt = { title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee };
+      if (!isStagedTask(tt)) return;
+      if (stageTicked(t.id, i)) st = '✅';
+      else if (st !== '✅') { const ef = stageParsedFor(t.id, i); if (ef.parsed.link || ef.parsed.files.length || ef.parsed.manualDone) st = '📥'; }
+    });
+    return '<span class="chip" style="font-size:.75rem">' + short[cat] + ' ' + st + '</span>';
+  }).join('') + '</div>';
+}
 function homeGroupLines(group, assignee, label){
   const items = group.filter(t=>t.assignee === assignee);
   if (!items.length) return '';
-  return '<div style="margin-top:8px;line-height:1.9"><b>' + label + ':</b> ' + items.map(t=>'<span style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</span>').join('، ') + '</div>' +
-    items.map(t=>{ const st = homeStepsChecklist(t); return st ? '<div style="margin-top:4px">' + st + '</div>' : ''; }).join('');
+  return '<div style="margin-top:8px;line-height:1.9"><b>' + label + ':</b> ' + items.map(t=>'<span style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</span>').join('، ') + '</div>';
 }
 function homeGroupCard(group){
-  let html = '<div class="card" style="border:2px solid #2dd4bf"><div class="meta">کار اصلی این روزها</div><b style="font-size:1.1rem">لوگوی پیج‌ها</b>' +
-    '<div class="meta" style="margin-top:4px">این کارها از تسک‌های واقعی لوگو و وکتور کنار هم چیده شده‌اند؛ هر عنوان را بزن تا برگهٔ همان کار باز شود.</div>';
+  const first = group[0];
+  let html = '<div class="card" style="border:2px solid #2dd4bf"><div class="meta">کار اصلی این روزها</div><b style="font-size:1.1rem">لوگوی پیج‌ها</b>';
   html += homeGroupLines(group, 'amir', 'کار امیر');
   html += homeGroupLines(group, 'negin', 'کار نگین');
   html += homeGroupLines(group, 'both', 'مشترک');
-  html += '</div>';
+  html += homePageChips(group);
+  html += '<button class="btn-teal btn-sm" style="margin-top:10px" onclick="openTaskSheet(' + first.id + ')">باز کردن کارت لوگوها</button></div>';
   return html;
 }
 // Fix9: tasks blocked awaiting the user's decision are identified from
@@ -1249,7 +1283,8 @@ function renderHomeDash(){
     nextHtml += '<div style="margin-top:10px"><b>To Do — برای هر پیج، یکی</b><p class="meta" style="line-height:1.8">هر پیج که ساخته شد، هندلش را همین‌جا بنویس تا ثبت شود. هندل‌ها فقط از دادهٔ کانال‌های همین پنل می‌آیند؛ چیزی از خودم ساخته نشده است.</p>' + homeTikTokRows() + '</div>';
   }
   const steps = homeStepsChecklist(next);
-  nextHtml += (steps ? '<div style="margin-top:10px"><b>To Do</b>' + steps + '</div>' : (isAccount ? '' : '<div class="meta" style="margin-top:10px">هنوز گامی نیست — برگهٔ کار را باز کن و «ساختن گام‌ها از راهنما» را بزن.</div>'));
+  const nextStaged = isStagedTask({ title: next.title, category: next.category, detail: detail, id: next.id, assignee: next.assignee });
+  nextHtml += (nextStaged ? homePageChips([next]) : (steps ? '<div style="margin-top:10px"><b>To Do</b>' + steps + '</div>' : (isAccount ? '' : '<div class="meta" style="margin-top:10px">هنوز گامی نیست — برگهٔ کار را باز کن و «ساختن گام‌ها از راهنما» را بزن.</div>')));
   nextHtml += '<button class="btn-ghost btn-sm" style="margin-top:10px" onclick="openTaskSheet('+next.id+')">باز کردن برگهٔ کار</button></div>';
   // Fix7: if several open tasks share the logo/vector theme, show ONE
   // grouped main-work card (owner breakdown from real tasks) instead of
@@ -1924,25 +1959,50 @@ function guidePlain(t){
 // itself. Where the user's pick is not known yet, the block shows
 // Muse's best default proposals with reasons, and the user picks from
 // them.
+// Fix19: each layout style renders VISUALLY differently (CSS/emoji only) —
+// the fix17/18 bug was six identical frames differing only in caption.
+// 0 icon alone (no word) · 1 icon above word (stacked) · 2 icon beside word
+// (horizontal) · 3 word alone (no icon) · 4 monogram letter in a circle
+// (no icon) · 5 icon inside a square frame (not a circle).
+function layoutFrameHtml(lf, i, ls){
+  var bg = lf[0], col = lf[1], acc = lf[2], icon = lf[3], name = lf[4];
+  var letter = /[A-Za-z]/.test(name.charAt(0)) ? name.charAt(0).toUpperCase() : name.charAt(0);
+  var frames = [
+    '<div style="background:' + bg + ';padding:16px;display:flex;align-items:center;justify-content:center"><div style="width:56px;height:56px;border-radius:50%;border:2px solid ' + acc + ';display:flex;align-items:center;justify-content:center;font-size:26px">' + icon + '</div></div>',
+    '<div style="background:' + bg + ';color:' + col + ';padding:12px;text-align:center"><div style="width:40px;height:40px;border-radius:50%;border:2px solid ' + acc + ';margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:18px">' + icon + '</div><b style="font-size:12px">' + name + '</b></div>',
+    '<div style="background:' + bg + ';color:' + col + ';padding:12px;display:flex;align-items:center;gap:8px"><div style="width:36px;height:36px;border-radius:50%;border:2px solid ' + acc + ';flex:none;display:flex;align-items:center;justify-content:center;font-size:16px">' + icon + '</div><b style="font-size:12px">' + name + '</b></div>',
+    '<div style="background:' + bg + ';color:' + col + ';padding:18px;text-align:center"><b style="font-size:16px;letter-spacing:1px">' + name + '</b></div>',
+    '<div style="background:' + bg + ';color:' + col + ';padding:12px;text-align:center"><div style="width:48px;height:48px;border-radius:50%;background:' + acc + ';color:' + bg + ';margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800">' + letter + '</div></div>',
+    '<div style="background:' + bg + ';color:' + col + ';padding:12px;text-align:center"><div style="width:48px;height:48px;border-radius:6px;border:3px solid ' + acc + ';margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:22px">' + icon + '</div></div>'
+  ];
+  return '<div style="border:1px solid #ddd;border-radius:12px;overflow:visible">' + frames[i] + '<div style="padding:8px;font-size:12px;line-height:1.8"><b>' + ls[0] + '</b><br><span class="meta">' + ls[1] + '</span></div></div>';
+}
 function museProposalsHtml(t){
   const txt = ((t.title || '') + ' ' + (t.category || '') + ' ' + (t.detail || '')).toLowerCase();
   const has = (...ws) => ws.some(w => txt.indexOf(w) >= 0);
   const pg = (typeof guidePageFor === 'function') ? guidePageFor(t) : null;
   const pgName = pg ? pg.page : 'این پیج';
   const blocks = [];
-  const head = '<div style="margin-top:12px;padding:12px;border:1px dashed #2dd4bf;border-radius:12px"><div style="line-height:1.9;margin-bottom:8px"><b>💡 پیشنهادهای میوز</b> — این‌ها پیشنهاد آماده‌اند، نه دستور؛ از بینشان انتخاب کن، یا بگو کدام حس را می‌خواهی تا همان را کامل کنم. برای ' + esc(pgName) + ':</div>';
+  const head = '<div style="margin-top:12px;padding:12px;border:1px dashed #2dd4bf;border-radius:12px"><div style="line-height:1.9;margin-bottom:8px"><b>💡 پیشنهادهای میوز برای ' + esc(pgName) + ' — انتخاب کن:</b></div>';
   const foot = '</div>';
+  if (has('هندل')) {
+    blocks.push('<div style="line-height:1.9"><b>هندل‌های پیشنهادی — به ترتیب امتحان کن:</b></div>' +
+      '<div style="display:flex;gap:8px;margin-top:6px">' +
+      '<div style="flex:1;border:1px solid #ddd;border-radius:10px;padding:8px;text-align:center"><b>۱</b><br><span class="meta">هم‌نام اینستاگرام همین پیج</span></div>' +
+      '<div style="flex:1;border:1px solid #ddd;border-radius:10px;padding:8px;text-align:center"><b>۲</b><br><span class="meta">هم‌نام یوتیوب همین پیج</span></div>' +
+      '<div style="flex:1;border:1px solid #ddd;border-radius:10px;padding:8px;text-align:center"><b>۳</b><br><span class="meta">هم‌نام تیک‌تاک همین پیج</span></div></div>');
+  }
   if (has('لوگو', 'وکتور', 'ترکیبی', 'نشان')) {
     // Fix15, per-page rule (2026-10-30 15:11): proposals are shown for
     // THIS page only, one page at a time — never all five at once.
     // Multi-page tasks show the first page (TitanStation) and say the
     // next page's proposal follows after confirmation.
     const logoFrames = {
-      'روانشناسی': ['#1a1a2e', '#2dd4bf', '#f59e0b', '🧠', 'TitanStation', 'وکتور خطی مغز + مونوگرام نئونی — چرا: مغز پیام روانشناسی را در یک نگاه می‌رساند و نئون در فید تاریک دیده می‌شود.'],
-      'شاهنامه': ['#36000b', '#d4af37', '#d4af37', '🦅', 'PreTime', 'وکتور سیمرغ + مینیاتور طلایی روی عنابی — چرا: سیمرغ ریشهٔ شاهنامه است و طلایی حس باشکوه می‌دهد.'],
-      'شده دیگه': ['#fff7ed', '#c2410c', '#f97316', '😄', 'شده دیگه', 'چهرهٔ دودل ساده + خط شوخ — چرا: سادگی‌اش با طنز روزمره می‌خواند و در سایز کوچک خواناست.'],
-      'گربه‌ها': ['#fdf2f8', '#be185d', '#f472b6', '🐾', 'گربه‌ها', 'وکتور خطی گربه + پنجه — چرا: پنجه امضای ثابت پیج می‌شود و در همهٔ قالب‌ها تکرار می‌شود.'],
-      'همکار': ['#0f766e', '#fde68a', '#fde68a', '🏪', 'همکار', 'ویترین خطی + آدمک دو نفره — چرا: فروش و همراهی را با هم می‌گوید.']
+      'روانشناسی': ['#1a1a2e', '#2dd4bf', '#f59e0b', '🧠', 'TitanStation', 'مغز خطی + مونوگرام نئونی؛ پیام در یک نگاه می‌رسد.'],
+      'شاهنامه': ['#36000b', '#d4af37', '#d4af37', '🦅', 'PreTime', 'سیمرغ + مینیاتور طلایی؛ ریشهٔ شاهنامه، حس باشکوه.'],
+      'شده دیگه': ['#fff7ed', '#c2410c', '#f97316', '😄', 'شده دیگه', 'چهرهٔ دودل ساده + خط شوخ؛ در سایز کوچک خواناست.'],
+      'گربه‌ها': ['#fdf2f8', '#be185d', '#f472b6', '🐾', 'گربه‌ها', 'گربهٔ خطی + پنجه؛ پنجه امضای ثابت پیج می‌شود.'],
+      'همکار': ['#0f766e', '#fde68a', '#fde68a', '🏪', 'همکار', 'ویترین خطی + آدمک دو نفره؛ فروش و همراهی با هم.']
     };
     let logoKey = 'روانشناسی';
     if (txt.indexOf('شاهنامه') >= 0 || txt.indexOf('pretime') >= 0 || txt.indexOf('اساطیر') >= 0) logoKey = 'شاهنامه';
@@ -1963,24 +2023,22 @@ function museProposalsHtml(t){
         ['مونوگرام در دایره', 'در آواتار گرد بهترین'],
         ['نماد در قاب', 'حس مهر و نشان']
       ];
-      blocks.push('<div style="line-height:1.9"><b>سبک‌های چیدمان لوگو — هر سبک را در قاب پروفایل و کاور ببین:</b></div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">' + layoutStyles.map(function(ls){
-          return '<div style="border:1px solid #ddd;border-radius:12px;overflow:hidden"><div style="background:' + lf[0] + ';color:' + lf[1] + ';padding:10px;text-align:center"><div style="width:40px;height:40px;border-radius:50%;border:2px solid ' + lf[2] + ';margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:18px">' + lf[3] + '</div><b style="font-size:12px">' + lf[4] + '</b></div><div style="padding:8px;font-size:12px;line-height:1.8"><b>' + ls[0] + '</b><br><span class="meta">' + ls[1] + '</span></div></div>';
-        }).join('') + '</div>' +
+      blocks.push('<div style="line-height:1.9"><b>سبک‌های چیدمان لوگو:</b></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">' + layoutStyles.map(function(ls, li){ return layoutFrameHtml(lf, li, ls); }).join('') + '</div>' +
         '<div style="line-height:1.9;margin-top:6px">چیدمان آمادهٔ میوز برای ' + esc(pgName) + ': ' + lf[5] + logoNote + '</div>');
     } else {
-    blocks.push('<div style="line-height:1.9"><b>ترکیب آمادهٔ لوگو — در قاب پروفایل و کاور ببینش:</b></div>' +
+    blocks.push('<div style="line-height:1.9"><b>ترکیب آمادهٔ لوگو:</b></div>' +
       '<div style="border-radius:12px;overflow:hidden;border:1px solid #ddd;margin-top:6px"><div style="background:' + lf[0] + ';color:' + lf[1] + ';padding:12px;text-align:center"><div style="width:52px;height:52px;border-radius:50%;border:2px solid ' + lf[2] + ';margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:24px">' + lf[3] + '</div><b>' + lf[4] + '</b><div style="font-size:12px;opacity:.85;margin-top:4px">کاور همین ترکیب — همان رنگ، همان حس</div></div><div style="padding:10px;font-size:13px;line-height:1.9">' + lf[5] + logoNote + '</div></div>' +
       '<div class="meta">پانویس اجرا: سرمه‌ای #1a1a2e، فیروزه‌ای #2dd4bf، نارنجی #f59e0b، عنابی #36000B، طلایی #d4af37.</div>');
     }
   }
   if (has('رنگ', 'تم رنگی', 'پالت')) {
-    blocks.push('<div style="line-height:1.9"><b>طیف پیشنهادی میوز — با چشم انتخاب کن:</b></div>' +
+    blocks.push('<div style="line-height:1.9"><b>طیف پیشنهادی میوز:</b></div>' +
       '<div style="height:34px;border-radius:99px;background:linear-gradient(90deg,#d9f99d,#86efac,#22c55e,#10b981,#059669,#064e3b)"></div>' +
       '<div style="display:flex;justify-content:space-between;font-size:11px;color:#5a6b60;margin-top:4px"><span>لیموئی</span><span>نعنایی</span><span>چمنی</span><span>زمردی</span><span>جنگلی</span></div>' +
-      '<div style="line-height:1.9;margin-top:6px">ترکیب پیشنهادی: ۶۰٪ فضای روشن برای نفس کشیدن طرح، ۳۰٪ زمردی برای تیتر و قاب، ۱۰٪ جنگلی برای دکمه و شمارهٔ قسمت — چرا: چشم اول زمردی را می‌بیند، بعد آرام سراغ جزئیات می‌رود.</div>' +
+      '<div style="line-height:1.9;margin-top:6px">ترکیب: ۶۰٪ روشن، ۳۰٪ زمردی، ۱۰٪ جنگلی.</div>' +
       '<div style="height:12px;border-radius:99px;overflow:hidden;display:flex;margin-top:6px"><div style="flex:6;background:#f5f5dc;border:1px solid #ddd"></div><div style="flex:3;background:#10b981"></div><div style="flex:1;background:#064e3b"></div></div>' +
-      '<div class="meta">پانویس اجرا: زمردی #10B981، جنگلی #064E3B، لیمویی #D9F99D، نعنایی #86EFAC. وقتی رنگ اصلی پیج را بگویی، میوز طیف همان رنگ را با همین شکل می‌سازد.</div>');
+      '<div class="meta">پانویس: زمردی #10B981، جنگلی #064E3B.</div>');
   }
   if (has('فونت')) {
     // Page's own content scene as the sample line (per-page rule):
@@ -1994,11 +2052,11 @@ function museProposalsHtml(t){
       '<div style="padding:8px;border:1px solid #eee;border-radius:10px;margin-top:6px"><div style="font-family:Tahoma,sans-serif;font-weight:bold;font-size:17px">' + esc(sampleLine) + '</div><div class="meta">تیتر ضخیم و خوانا — روی موبایل از همه بهتر خوانده می‌شود.</div></div>' +
       '<div style="padding:8px;border:1px solid #eee;border-radius:10px;margin-top:6px"><div style="font-family:Georgia,serif;font-weight:bold;font-size:17px">' + esc(sampleLine) + '</div><div class="meta">تیتر باشکوه و کلاسیک — حس ریشه‌دار، مناسب شاهنامه.</div></div>' +
       '<div style="padding:8px;border:1px solid #eee;border-radius:10px;margin-top:6px"><div style="font-family:Tahoma,sans-serif;font-size:16px">' + esc(sampleLine) + '</div><div class="meta">متن نرم و صمیمی — برای کپشن و استوری، نه تیتر.</div></div>' +
-      '<div class="meta">پانویس اجرا: در کانوا فعلاً Intercom Arabic به‌جای وزیرمتن استفاده شده؛ انتخاب نهایی فونت با همین مقایسه قفل می‌شود.</div>');
+      '<div class="meta">پانویس: کانوا فعلاً Intercom Arabic است.</div>');
   }
   if (has('لحن', 'اسلوگان', 'صدای برند', 'صدا')) {
-    blocks.push('<div style="line-height:1.9"><b>لحن و اسلوگان — جمله‌های آماده:</b></div>' +
-      '<div style="line-height:1.9">✅ بگو: «ذهنت داره باهات بازی می‌کنه» — چرا: صمیمی است، با «تو» حرف می‌زند و کنجکاوی می‌سازد.<br>✅ بگو: «شده دیگه، همین‌قدر ساده!» — چرا: در ذهن می‌ماند و لحن شوخ پیج را می‌گوید.<br>⛔ نگو: اصطلاح آکادمیک سنگین بدون توضیح — چرا: مخاطب کوتاه‌خوان را در همان جملهٔ اول از دست می‌دهد.</div>');
+    blocks.push('<div style="line-height:1.9"><b>لحن و اسلوگان:</b></div>' +
+      '<div style="line-height:1.9">✅ «ذهنت داره باهات بازی می‌کنه» — صمیمی و کنجکاوکننده.<br>✅ «شده دیگه، همین‌قدر ساده!» — در ذهن می‌ماند.<br>⛔ اصطلاح سنگین بدون توضیح — مخاطب را از دست می‌دهد.</div>');
   }
   if (has('قالب', 'کاروسل', 'کاور', 'استوری', 'پست')) {
     blocks.push('<div style="line-height:1.9"><b>قالب آماده — پست و استوری را با هم ببین:</b></div>' +
@@ -2006,11 +2064,11 @@ function museProposalsHtml(t){
       '<div style="flex:1;border-radius:12px;overflow:hidden;border:1px solid #ddd"><div style="background:linear-gradient(180deg,#2dd4bf,#1a1a2e);color:#fff;padding:14px;text-align:center;height:96px;display:flex;align-items:center;justify-content:center"><b>استوری</b></div><div style="padding:8px;font-size:12px;line-height:1.8">استوری: همان رنگ و فونت، فضای خالی بیشتر برای خوانایی سریع.</div></div></div>');
   }
   if (has('بیو', 'واژه', 'هشتگ', 'معرفی')) {
-    blocks.push('<div style="line-height:1.9"><b>بیو و واژه‌ها — گزینه‌های آماده با دلیل:</b></div>' +
-      '<div style="line-height:1.9">۱) «ذهنت رو رمزگشایی می‌کنیم 🔓» — چرا: کوتاه است و وعدهٔ پیج را در یک جمله می‌گوید.<br>۲) «خطاهای ذهنت را بشناس، بهتر تصمیم بگیر» — چرا: فایدهٔ مستقیم را می‌گوید، برای مخاطب عمل‌گرا بهتر است.<br>هشتگ‌های ثابت پیشنهادی: #رمزگشایی_ذهن #خطای_ذهنی — چرا: هر دو دقیقاً موضوع پیج‌اند، نه عمومی و گم‌شونده.</div>');
+    blocks.push('<div style="line-height:1.9"><b>بیو و واژه‌ها:</b></div>' +
+      '<div style="line-height:1.9">۱) «ذهنت رو رمزگشایی می‌کنیم 🔓» — کوتاه و وعده‌دار.<br>۲) «خطاهای ذهنت را بشناس» — فایدهٔ مستقیم.<br>هشتگ‌ها: #رمزگشایی_ذهن #خطای_ذهنی</div>');
   }
   if (!blocks.length) {
-    blocks.push('<div style="line-height:1.9"><b>پیشنهاد پیش‌فرض میوز:</b> از همین کار، سه گزینهٔ آماده می‌سازم — گزینهٔ امن (نزدیک به چیزی که تا حالا داشتی)، گزینهٔ جسورانه (دیده‌شونده‌تر در فید)، و گزینهٔ میانه — هر کدام با یک دلیل کوتاه که چرا به درد این پیج می‌خورد. تو فقط بگو کدام حس را می‌خواهی، بقیه‌اش با من است.</div>');
+    blocks.push('<div style="line-height:1.9"><b>پیشنهاد پیش‌فرض میوز:</b> سه گزینه: امن، جسورانه، میانه — بگو کدام حس را می‌خواهی.</div>');
   }
   return head + blocks.join('') + foot;
 }
@@ -2041,8 +2099,8 @@ function tailoredGuideHtml(t){
       (g.note ? '<div class="meta" style="margin-top:4px">' + esc(g.note) + '</div>' : '') +
       '<div style="line-height:1.9;margin-top:8px"><b>مرحله‌ها (به ترتیب، یکی‌یکی):</b></div>' +
       '<div style="line-height:1.9">' + STAGE_ORDER.map(function(cat){ return esc(stageShortLine(kind16, cat)); }).join('<br>') + '</div>' +
-      '<div style="line-height:1.9;margin-top:6px">بعد از تأیید آخرین پیج، Muse می‌گوید «همه دریافت شد»؛ آن‌وقت کار را تمام‌شده بزن</div>' +
-      (g.museNext ? '<div class="meta" style="margin-top:6px;line-height:1.9">🤖 بعدش میوز چه می‌کند: ' + esc(g.museNext) + '</div>' : '') + '</div>';
+      '<div style="line-height:1.9;margin-top:6px">بعد از تأیید آخرین پیج، «همه دریافت شد»؛ کار را تمام‌شده بزن</div>' +
+      '<div class="meta" style="margin-top:6px;line-height:1.9">🤖 بعدش میوز چه می‌کند: ' + stageMuseHelp(kind16) + '</div></div>';
   }
   let html = '<div class="method-card">' + (plain ? '<div style="line-height:1.9;margin-bottom:6px">💡 ' + esc(plain) + '</div>' : '') + '<div style="line-height:1.8"><b>هدف:</b> ' + esc(g.goal) + '</div>';
   if (g.note) html += '<div class="meta" style="margin-top:4px">' + esc(g.note) + '</div>';
@@ -2218,12 +2276,16 @@ function stageTermsFor(kind, cat){
   if (kind === 'handle') return cat === 'شاهنامه' ? ['pretimetv، بعد pretime، بعد pre.time'] : ['هندل هم‌نام شبکه‌های دیگر همین پیج'];
   return PAGE_SEARCH_PHRASES[cat].phrases.slice();
 }
+// Fix19: every staged-card section is at most ONE short line (~<=15 Persian
+// words). Multi-sentence paragraphs were the 'too long explanations'
+// complaint. User/Muse-written note contents are exempt (they are data,
+// not UI copy).
 function stageShortLine(kind, cat){
   const page = PAGE_SEARCH_PHRASES[cat].page;
-  if (kind === 'combo') return 'پیج ' + page + ': ترکیب وکتور + استایل → ترکیب را در یادداشت همین مرحله بنویس → صبر کن تا میوز تأیید کنه';
-  if (kind === 'layout') return 'پیج ' + page + ': سبک‌های چیدمان را ببین → لینک بورد رو تو فیلد همین مرحله بذار + فایل‌ها رو تو 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه';
-  if (kind === 'handle') return 'پیج ' + page + ': هندل را امتحان کن → نتیجه را در یادداشت همین مرحله بنویس → صبر کن تا میوز تأیید کنه';
-  return 'پیج ' + page + ': سرچ‌ها → لینک بورد رو تو فیلد همین مرحله بذار + فایل‌ها رو تو 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه';
+  if (kind === 'combo') return 'پیج ' + page + ': ترکیب وکتور + استایل → در یادداشت بنویس';
+  if (kind === 'layout') return 'پیج ' + page + ': چیدمان را ببین → لینک و فایل همین مرحله';
+  if (kind === 'handle') return 'پیج ' + page + ': هندل را امتحان کن → نتیجه همین مرحله';
+  return 'پیج ' + page + ': سرچ کن → لینک و فایل همین مرحله';
 }
 function stageNoteParse(body){
   const out = { link: '', files: [], muse: '', other: [], dont: '', need: '', manualDone: false, tick: false };
@@ -2335,16 +2397,16 @@ function stageProposalHeadline(cat, kind){
   return m[cat] || 'سه گزینه: امن / جسورانه / میانه';
 }
 function stageMuseHelp(kind){
-  if (kind === 'combo') return 'بعد از نوشتن ترکیب تو، میوز آن را با دلیل نهایی می‌کند و بعد از تأیید تو، پیج بعدی باز می‌شود.';
-  if (kind === 'handle') return 'بعد از نوشتن نتیجه، میوز هندل نهایی را ثبت می‌کند و در جدول کانال‌ها می‌گذارد.';
-  if (kind === 'layout') return 'بعد از تحویل تو، میوز سبک‌های چیدمان را کنار وکتورهای نگین می‌چیند، بهترین چیدمان این پیج را با دلیل می‌گوید و بعد از تأیید تو سراغ پیج بعدی می‌رود.';
-  return 'بعد از تحویل تو، میوز مدل‌ها را کنار هم می‌چیند، با دلیل ترکیب نهایی این پیج را می‌گوید و بعد از تأیید تو سراغ پیج بعدی می‌رود.';
+  if (kind === 'combo') return 'میوز ترکیب را با دلیل نهایی می‌کند.';
+  if (kind === 'handle') return 'میوز هندل نهایی را در کانال‌ها ثبت می‌کند.';
+  if (kind === 'layout') return 'میوز بهترین چیدمان این پیج را پیشنهاد می‌دهد.';
+  return 'میوز ترکیب نهایی این پیج را پیشنهاد می‌دهد.';
 }
 function stageManualLine(kind){
-  if (kind === 'layout') return 'در پینترست با عبارت‌های زیر سرچ کن، سبک‌های چیدمان را در قاب پروفایل و کاور بسنج، بورد بساز، لینکش را در فیلد همین کارت بذار و فایل‌ها را همین‌جا آپلود کن.';
-  if (kind === 'combo') return 'وکتور نهایی نگین و استایل نهایی امیر را کنار هم بگذار و ترکیب را در یادداشت همین کارت بنویس.';
-  if (kind === 'handle') return 'در آپارات هندل‌ها را به ترتیب امتحان کن و نتیجه را در یادداشت همین کارت بنویس.';
-  return 'در پینترست با عبارت‌های زیر سرچ کن، بورد بساز، لینکش را در فیلد همین کارت بذار و فایل‌ها را همین‌جا آپلود کن.';
+  if (kind === 'layout') return 'در پینترست سرچ کن، بورد بساز، لینک و فایل را همین‌جا بذار.';
+  if (kind === 'combo') return 'وکتور و استایل نهایی را کنار هم بگذار و بنویس.';
+  if (kind === 'handle') return 'در آپارات هندل‌ها را امتحان کن و نتیجه را بنویس.';
+  return 'در پینترست سرچ کن، بورد بساز، لینک و فایل را همین‌جا بذار.';
 }
 function stageFileMap(t){
   const map = {};
@@ -2392,10 +2454,10 @@ function stageProposalsHtml(t, cat){
 // itself — one thing, at this moment, naming exactly where it goes
 // (stage link field / stage 📎 upload / stage note field), never vague.
 function stageAskLine(kind){
-  if (kind === 'layout') return 'الان فقط این یک کار را بکن: سبک‌های چیدمان این پیج را پیدا کن، لینک بورد را در فیلد «لینک بورد این پیج» بذار و فایل‌ها را با دکمهٔ «آپلود برای همین مرحله» همین‌جا آپلود کن.';
-  if (kind === 'combo') return 'الان فقط این یک کار را بکن: ترکیب «این وکتور + این استایل» را در یادداشت همین مرحله بنویس.';
-  if (kind === 'handle') return 'الان فقط این یک کار را بکن: هندل را امتحان کن و نتیجه را در یادداشت همین مرحله بنویس.';
-  return 'الان فقط این یک کار را بکن: با عبارت‌های زیر سرچ کن، لینک بورد این پیج را در فیلد «لینک بورد این پیج» بذار و فایل‌ها را با دکمهٔ «آپلود برای همین مرحله» همین‌جا آپلود کن.';
+  if (kind === 'layout') return 'چیدمان این پیج را پیدا کن؛ لینک و فایل را همین‌جا بذار.';
+  if (kind === 'combo') return 'ترکیب «وکتور + استایل» را همین‌جا بنویس.';
+  if (kind === 'handle') return 'هندل را امتحان کن؛ نتیجه را همین‌جا بنویس.';
+  return 'سرچ کن؛ لینک و فایل را همین‌جا بذار.';
 }
 function stageFilesHtml(todoId, parsed){
   if (!parsed.files.length) return '<p class="meta">هنوز فایلی برای این مرحله ثبت نشده.</p>';
@@ -2420,14 +2482,14 @@ function stageCardsHtml(t, opts){
   const curLabel = allDone ? 5 : curIdx + 1;
   let html = '';
   if (!bare) {
-    html += '<h2 style="margin-top:16px">مرحله‌های این کار — هر کارت یک To Do برای یک پیج است</h2>';
-    html += '<div class="meta" style="line-height:1.9">مرحلهٔ ' + curLabel + ' از ۵ — ' + doneCount + ' تأیید شده. کارت هر پیج را باز کن: پیشنهادها همان‌جاست، حتی اگر گام مرحله‌ای ساخته نشده باشد.</div>';
+    html += '<h2 style="margin-top:16px">مرحله‌های این کار</h2>';
+    html += '<div class="meta" style="line-height:1.9">مرحلهٔ ' + curLabel + ' از ۵ — ' + doneCount + ' تأیید شده.</div>';
   }
   if (!steps.length) {
-    html += '<p class="meta" style="line-height:1.9">گام مرحله‌ای هنوز ساخته نشده — ولی کارت‌ها کامل کار می‌کنند و تحویل‌ها با برچسب مرحله ذخیره می‌شوند. ساختن گام‌ها فقط برای انتقال به گام‌هاست، نه پیش‌نیاز.</p><button class="btn-teal btn-sm" style="margin-top:8px" onclick="ensureStageSteps(' + t.id + ',this)">ساختن گام‌های مرحله‌ای (اختیاری)</button>';
+    html += '<p class="meta" style="line-height:1.9">کارت‌ها بدون ساختن گام هم کامل کار می‌کنند.</p><button class="btn-teal btn-sm" style="margin-top:8px" onclick="ensureStageSteps(' + t.id + ',this)">ساختن گام‌های مرحله‌ای (اختیاری)</button>';
   }
   if (allDone && t.status !== 'done') {
-    html += '<div class="card" style="margin-top:12px;border:2px solid #2dd4bf"><div style="line-height:1.9"><b>✅ همهٔ مرحله‌ها انجام شد — این تسک کامل شد</b></div><p class="meta" style="line-height:1.9">همهٔ ۵ پیج تأیید شده‌اند. برای بستن تسک، دکمهٔ زیر را بزن (خودکار بسته نمی‌شود).</p><button class="btn-teal" style="margin-top:8px" onclick="completeStagedTask(' + t.id + ',this)">✅ تمام‌شده بزن — این تسک کامل شد</button></div>';
+    html += '<div class="card" style="margin-top:12px;border:2px solid #2dd4bf"><div style="line-height:1.9"><b>✅ همهٔ مرحله‌ها انجام شد — این تسک کامل شد</b></div><p class="meta" style="line-height:1.9">برای بستن تسک، دکمه را بزن.</p><button class="btn-teal" style="margin-top:8px" onclick="completeStagedTask(' + t.id + ',this)">✅ تمام‌شده بزن — این تسک کامل شد</button></div>';
   } else if (allDone) {
     html += '<div class="meta" style="line-height:1.9;margin-top:8px">✅ همهٔ مرحله‌ها انجام شده و این تسک تمام شده است.</div>';
   }
@@ -2457,28 +2519,39 @@ function stageCardsHtml(t, opts){
     const checkHtml = items.map(function(it, j){
       if (it.mode === 'manual') return '<label style="display:flex;gap:8px;align-items:center;line-height:1.9"><input type="checkbox" ' + (it.done ? 'checked' : '') + (locked ? ' disabled' : '') + ' onchange="toggleInnerFind(' + t.id + ',' + i + ',this.checked)"> ' + esc(it.label) + '</label>';
       if (it.mode === 'auto') return '<label style="display:flex;gap:8px;align-items:center;line-height:1.9"><input type="checkbox" ' + (it.done ? 'checked' : '') + ' disabled> ' + esc(it.label) + (it.done ? '' : ' <span class="meta">(خودکار تیک می‌خورد)</span>') + '</label>';
-      return '<label style="display:flex;gap:8px;align-items:center;line-height:1.9"><input type="checkbox" ' + (it.done ? 'checked' : '') + ((locked || (!it.done && !prereqDone)) ? ' disabled' : '') + ' onchange="toggleStageTick(' + t.id + ',' + i + ',this.checked)"> <b>' + esc(it.label) + '</b>' + ((!it.done && !prereqDone) ? ' <span class="meta">(بعد از تیک خوردن بقیهٔ این کارت باز می‌شود)</span>' : '') + '</label>';
+      return '<label style="display:flex;gap:8px;align-items:center;line-height:1.9"><input type="checkbox" ' + (it.done ? 'checked' : '') + ((locked || (!it.done && !prereqDone)) ? ' disabled' : '') + ' onchange="toggleStageTick(' + t.id + ',' + i + ',this.checked)"> <b>' + esc(it.label) + '</b>' + ((!it.done && !prereqDone) ? ' <span class="meta">(بعد از بقیه باز می‌شود)</span>' : '') + '</label>';
     }).join('');
     const checklistHtml = '<div style="margin-top:10px"><b>چک‌لیست این مرحله:</b>' + checkHtml + '</div>';
     let body = '';
     body += proposalsHtml + museLine + manualHtml + byoHtml;
     if (ticked) {
-      body += progressHtml + '<div style="line-height:1.9;margin-top:8px">🔗 لینک بورد این پیج: ' + (parsed.link ? '<a href="' + esc(parsed.link) + '" target="_blank" rel="noopener">' + esc(parsed.link) + '</a>' : '<span class="meta">ثبت نشده</span>') + '</div>' + filesHtml + museNoteLine + otherHtml + feedbackHtml + '<div class="meta" style="line-height:1.9">این مرحله تأیید شده؛ فایل جدید را در مرحلهٔ جاری بگذار.</div>' + checklistHtml;
+      body += progressHtml + '<div style="line-height:1.9;margin-top:8px">🔗 لینک بورد این پیج: ' + (parsed.link ? '<a href="' + esc(parsed.link) + '" target="_blank" rel="noopener">' + esc(parsed.link) + '</a>' : '<span class="meta">ثبت نشده</span>') + '</div>' + filesHtml + museNoteLine + otherHtml + feedbackHtml + '<div class="meta" style="line-height:1.9">تأیید شده؛ فایل جدید در مرحلهٔ جاری.</div>' + checklistHtml;
     } else if (locked) {
-      body += progressHtml + '<div class="meta" style="line-height:1.9;margin-top:8px">🔒 تحویل این مرحله بعد از تأیید مرحلهٔ قبل باز می‌شود — ولی پیشنهادها و بازخوردش همین‌جا قابل دیدن است.</div>' + feedbackHtml + checklistHtml;
+      body += progressHtml + '<div class="meta" style="line-height:1.9;margin-top:8px">🔒 بعد از تأیید مرحلهٔ قبل باز می‌شود.</div>' + feedbackHtml + checklistHtml;
     } else {
       body += '<div style="line-height:1.9;margin-top:8px"><b>' + stageAskLine(kind) + '</b></div>' + progressHtml +
         '<div style="line-height:1.9;margin-top:8px;margin-bottom:6px"><label>لینک بورد این پیج</label><div class="row" style="gap:8px;margin-top:4px"><input type="text" id="stageLinkInput-' + i + '" value="' + esc(parsed.link) + '" placeholder="لینک بورد این پیج…" style="flex:1;margin-bottom:0" dir="ltr"><button class="btn-teal btn-sm" onclick="saveStageLink(' + t.id + ',' + i + ',this)">ذخیرهٔ لینک</button></div></div>' +
-        '<div style="line-height:1.9">📎 فایل‌های این مرحله — فقط از همین کارت آپلود کن تا به همین مرحله وصل شوند:</div>' + filesHtml +
+        '<div style="line-height:1.9">📎 فایل‌های این مرحله:</div>' + filesHtml +
         '<div class="row" style="gap:8px;margin-top:8px"><input type="file" id="stageFileInput-' + i + '" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style="flex:1;min-width:0"><button class="btn-teal btn-sm" onclick="uploadStageFile(' + t.id + ',' + i + ',this)">⬆️ آپلود برای همین مرحله</button></div>' +
         '<div id="stageUploadStatus-' + i + '" class="meta" style="margin-top:6px"></div>' + museNoteLine + otherHtml + feedbackHtml + checklistHtml;
     }
-    return '<details class="card" ' + (isCur ? 'open' : '') + ' style="margin-bottom:10px"><summary style="line-height:1.9;cursor:pointer"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">' + status + '</span> <span class="meta">' + innerDone + ' از ' + items.length + ' ✓</span></summary><div style="margin-top:8px">' + body + '</div></details>';
+    return '<details class="card stage-card" ' + (isCur ? 'open' : '') + '><summary class="stage-summary"><span class="stage-title-row"><span class="stage-chev">▾</span><span class="stage-title"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b></span></span><span class="stage-meta-row"><span class="chip" style="font-size:.75rem">' + status + '</span><span class="meta">' + innerDone + ' از ' + items.length + ' ✓</span></span></summary><div style="margin-top:8px">' + body + '</div></details>';
   }).join('');
   return html;
 }
 
 
+// ---------- Fix19: Home dump fix + distinct layout frames + one-line caps + card layout ----------
+// (1) Home grouped/today/next cards for staged tasks never render step text:
+//     homeGroupLines no longer appends homeStepsChecklist; homeGroupCard,
+//     homeTaskCard and the next-task card show titles + homePageChips +
+//     one open button instead. (2) #35 layout frames are structurally
+//     distinct (layoutFrameHtml). (3) Every staged-card UI string is one
+//     short line (see stageMuseHelp/stageManualLine/stageAskLine/
+//     stageShortLine and the shortened proposal blocks). (4) Card layout:
+//     vertical-stack summaries (.stage-summary), visible overflow,
+//     generous padding, single chevron; staged sheets lost the shared
+//     📎 upload + paragraphs (list-only, see attachmentsHtml).
 // ---------- Fix18: nested cards + #35 layout correction ----------
 // WHY (user, live fix17 phone screenshots): the structure was right
 // but the presentation was linear, repetitive and ugly — sections
@@ -2510,8 +2583,8 @@ function stageCardsHtml(t, opts){
 function nestedStageCardsHtml(t){
   const doneCount = STAGE_ORDER.map(function(cat, i){ return stageTicked(t.id, i); }).filter(Boolean).length;
   const allDone = doneCount === STAGE_ORDER.length;
-  const summary = '<b>📦 ' + esc(t.title) + '</b> <span class="chip" style="font-size:.75rem">' + doneCount + ' از ۵ پیج ✓</span>' + (allDone ? ' <span>✅ کامل شد</span>' : '') + '<br><span class="meta">هر پیج یک کارت جدا دارد — کارت پیج را باز کن</span>';
-  return '<details class="card" open style="margin-top:16px"><summary style="line-height:1.9;cursor:pointer">' + summary + '</summary><div style="margin-top:8px">' + stageCardsHtml(t, { bare: true }) + '</div></details>';
+  const summary = '<span class="stage-title-row"><span class="stage-chev">▾</span><span class="stage-title"><b>📦 ' + esc(t.title) + '</b></span></span><span class="stage-meta-row"><span class="chip" style="font-size:.75rem">' + doneCount + ' از ۵ پیج ✓</span>' + (allDone ? '<span>✅ کامل شد</span>' : '') + '<span class="meta">هر پیج یک کارت جدا دارد</span></span>';
+  return '<details class="card stage-card stage-main" open><summary class="stage-summary">' + summary + '</summary><div style="margin-top:8px">' + stageCardsHtml(t, { bare: true }) + '</div></details>';
 }
 
 async function saveStageLink(todoId, stageIdx, btn){
@@ -2731,8 +2804,14 @@ function attachmentsHtml(todoId){
           + '<button class="btn-danger btn-sm" onclick="deleteTaskAttachment(' + todoId + ',' + a.id + ',this)">حذف</button></div>';
       }).join('')
     : '<p class="meta">هنوز فایلی برای این کار آپلود نشده.</p>';
+  // Fix19: on staged sheets the shared 📎 upload + its explanatory paragraphs
+  // are GONE — the per-stage upload inside each page card is the only file
+  // UI (one place, not two; the duplicate paragraph was the confusion in
+  // the screenshots). The file LIST stays, stage-labelled, so nothing
+  // already uploaded disappears. Non-staged tasks keep the shared upload.
+  if (_attStaged) return '<h2 style="margin-top:16px">📎 فایل‌های ثبت‌شدهٔ این کار</h2>'
+    + '<p class="meta" style="line-height:1.9">فایل جدید را از کارت همان مرحله آپلود کن.</p>' + items;
   return '<h2 style="margin-top:16px">📎 فایل‌های این کار</h2>'
-    + (_attStaged ? '<p class="meta" style="line-height:1.9">مرحلهٔ هر فایل از یادداشت همان گام خوانده می‌شود؛ فایل «بدون مرحله» از کارت مرحله آپلود نشده است.</p>' : '')
     + '<p class="meta" style="line-height:1.9">مدل‌ها، وکتورها و فایل‌های این کار را همین‌جا آپلود کن — همین‌جاست که میوز می‌بیندشان. فقط عکس (PNG/JPEG/WebP/GIF) و PDF، هر فایل حداکثر ۱۰ مگابایت، حداکثر ۲۰ فایل برای هر کار.</p>'
     + items
     + '<div class="row" style="gap:8px;margin-top:8px"><input type="file" id="attachFileInput" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style="flex:1;min-width:0">'
