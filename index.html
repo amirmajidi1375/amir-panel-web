@@ -1996,15 +1996,35 @@ function museProposalsHtml(t){
   return head + blocks.join('') + foot;
 }
 function tailoredGuideHtml(t){
-  const g = tailoredGuideFor(t);
+  // Fix16: resolve the task's real detail (notes row) when the caller
+  // passed a bare todo, so staged detection matches createGuideSteps.
+  const tFull = (t.detail || !t.id) ? t : { title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee };
+  const g = tailoredGuideFor(tFull);
   // Fix13: any other multi-page guide (not already staged above) still
   // gets the gate note, so no guide ever tells the user to do all five
   // pages at once.
   if (!g.staged) {
-    const txt2 = ((t.title || '') + ' ' + (t.detail || '')).toLowerCase();
+    const txt2 = ((tFull.title || '') + ' ' + (tFull.detail || '')).toLowerCase();
     if (txt2.indexOf('هر پیج') >= 0 || txt2.indexOf('هر ۵') >= 0 || txt2.indexOf('هر پنج') >= 0) g.note = (g.note ? g.note + ' ' : '') + STAGE_NOTE;
   }
-  const plain = guidePlain(t);
+  const plain = guidePlain(tFull);
+  // Fix16: staged guides print ONE SHORT line per stage (search
+  // template verbatim for search stages; adapted one-liners for
+  // combination/handle stages, which have no searches). Search terms
+  // live on the stage card only, never repeated in prose. The final
+  // 'همه دریافت شد' line stays. The fix15 proposals block is NOT
+  // appended here any more: it now appears per stage on the stage
+  // cards (stageProposalsHtml), scoped to that stage's page — the
+  // function itself and its non-staged use are untouched.
+  if (g.staged) {
+    const kind16 = stageKindFor(g.goal);
+    return '<div class="method-card">' + (plain ? '<div style="line-height:1.9;margin-bottom:6px">💡 ' + esc(plain) + '</div>' : '') + '<div style="line-height:1.8"><b>هدف:</b> ' + esc(g.goal) + '</div>' +
+      (g.note ? '<div class="meta" style="margin-top:4px">' + esc(g.note) + '</div>' : '') +
+      '<div style="line-height:1.9;margin-top:8px"><b>مرحله‌ها (به ترتیب، یکی‌یکی):</b></div>' +
+      '<div style="line-height:1.9">' + STAGE_ORDER.map(function(cat){ return esc(stageShortLine(kind16, cat)); }).join('<br>') + '</div>' +
+      '<div style="line-height:1.9;margin-top:6px">بعد از تأیید آخرین پیج، Muse می‌گوید «همه دریافت شد»؛ آن‌وقت کار را تمام‌شده بزن</div>' +
+      (g.museNext ? '<div class="meta" style="margin-top:6px;line-height:1.9">🤖 بعدش میوز چه می‌کند: ' + esc(g.museNext) + '</div>' : '') + '</div>';
+  }
   let html = '<div class="method-card">' + (plain ? '<div style="line-height:1.9;margin-bottom:6px">💡 ' + esc(plain) + '</div>' : '') + '<div style="line-height:1.8"><b>هدف:</b> ' + esc(g.goal) + '</div>';
   if (g.note) html += '<div class="meta" style="margin-top:4px">' + esc(g.note) + '</div>';
   // Fix11: no screenshot nagging. Steps inside the panel need no screenshot —
@@ -2020,8 +2040,359 @@ function tailoredGuideHtml(t){
     if (inPanel) tail = ' → باید ببینی در همین برگه ثبت شد';
     else if (!shotUsed && !s.staged && !s.noShot) { tail = ' → <b>اسکرین بگیر</b>'; shotUsed = true; }
     return '<li style="margin-top:6px">' + where + ' → ' + esc(s.action) + tail + (s.expect ? '<div class="meta">باید دقیقاً این باشد: ' + esc(s.expect) + '</div>' : '') + '</li>';
-  }).join('') + '</ol>' + (g.museNext ? '<div class="meta" style="margin-top:6px;line-height:1.9">🤖 بعدش میوز چه می‌کند: ' + esc(g.museNext) + '</div>' : '') + museProposalsHtml(t) + (shotUsed ? '<div class="meta" style="margin-top:6px">اسکرین فقط برای همان یک قدم بیرون از پنل است؛ قدم‌های داخل پنل را از روی همان برگه چک کن، اسکرین لازم ندارد.</div>' : '') + '</div>';
+  }).join('') + '</ol>' + (g.museNext ? '<div class="meta" style="margin-top:6px;line-height:1.9">🤖 بعدش میوز چه می‌کند: ' + esc(g.museNext) + '</div>' : '') + museProposalsHtml(tFull) + (shotUsed ? '<div class="meta" style="margin-top:6px">اسکرین فقط برای همان یک قدم بیرون از پنل است؛ قدم‌های داخل پنل را از روی همان برگه چک کن، اسکرین لازم ندارد.</div>' : '') + '</div>';
   return html;
+}
+
+// ---------- Fix16: staged sub-task tracker (copy-only) ----------
+// WHY: the staged guide was a wall of repeated paragraphs with no link
+// field, so nobody could tell which stage belongs to which page, what
+// is done vs remaining, or which file/link belongs to which stage.
+// WHAT CHANGED (frontend only, no new backend action, no new column):
+// - tailoredGuideHtml() for staged guides now prints ONE SHORT line per
+//   stage (search template verbatim for search stages; adapted one-liners
+//   for combination/handle stages, which have no searches) + the final
+//   'همه دریافت شد' line. Search terms live on the stage card only.
+// - renderTaskView() inserts stageCardsHtml() between the guide and the
+//   📎 section for every staged task: #34/#35/#36/#37 (g.staged true)
+//   and any other multi-page task (title/detail containing هر پیج /
+//   هر ۵ / هر پنج), in the fixed STAGE_ORDER order.
+// - attachmentsHtml() labels each file with its stage (from the stage
+//   step note, see below); a staged file with no stage label means it
+//   was uploaded from the shared 📎 section, not from a stage card.
+//
+// STORAGE — EXACT MECHANISM (no per-stage storage exists, so the stage
+// step's own existing records carry everything; read this before
+// touching stage code, and keep it true):
+// - STAGE IDENTITY: the i-th step (by position) whose title matches
+//   /مرحلهٔ N از ۵/ is stage i (STAGE_ORDER[i]); page = that stage's
+//   PAGE_SEARCH_PHRASES page. Never match by page name in the title.
+// - STATUS: the stage step's done flag, via the EXISTING updateStep
+//   action (toggleViewStep / step checkbox). done=true => ✅ تأیید شد.
+//   Muse confirms a stage by ticking that step done (updateStep) after
+//   arranging the page; the card checkbox is the same mechanism.
+//   Pill rule: done => ✅ تأیید شد; else link-or-files present =>
+//   📥 تحویل داده شد; else ⏳ در انتظار.
+// - LINK: stored in that stage step's EXISTING step-note row (notes
+//   table, prefix '📋 یادداشت گام «todoId:stepId»:') as the line
+//   '🔗 لینک بورد: <URL>', written via the EXISTING addNote/updateNote
+//   paths (saveStageLink). It is NOT a step-title suffix and NOT a new
+//   action/column. Empty link clears that line only.
+// - FILES: a file's bytes live in the EXISTING task_attachments row
+//   (requestUpload/confirmUpload, todo_id only — no stage column).
+//   The stage binding is the file NAME listed in that stage step's
+//   step-note line '📎 فایل‌های این مرحله: <name>، <name>' (written by
+//   uploadStageFile right after confirmUpload, via addNote/updateNote).
+//   Read-back: stage card lists exactly those names (with an Open
+//   button when a task_attachments row with that file_name still
+//   exists); the shared 📎 section labels each file with its stage
+//   from the same lines. Deleting a file (deleteAttachment) also
+//   strips its name from stage notes (stripStageFile, best-effort).
+// - MUSE NOTE: '🤖 یادداشت میوز: <text>' is the LAST line block of the
+//   same step note (multi-line allowed; everything after the marker to
+//   the end of the note is the muse note). Muse writes it by editing
+//   that step-note row (updateNote) and keeping the 🔗/📎 lines above
+//   it; the card shows it read-only (empty => 'هنوز نوشته نشده').
+// - OTHER TEXT in a stage step note (e.g. a handle result written
+//   before fix16) is preserved verbatim between the 📎 line and the
+//   🤖 line and shown as 'یادداشت مرحله'; savers never drop it.
+// - GATING is UI-only: current stage = first undone stage step; later
+//   stages render collapsed/locked ('بعد از تأیید مرحلهٔ قبل باز
+//   می‌شود') with disabled inputs. The server enforces nothing new.
+// - NO STEPS YET: cards render from the guide with an explicit
+//   'ساختن ۵ گام مرحله‌ای' button (ensureStageSteps, existing addStep
+//   only). Until those steps exist there is no step id to attach a
+//   link/file to, so link/upload inputs stay out of the cards.
+// FIX16b (panel-way-of-working): every card is SHORT/SIMPLE/VISIBLE —
+// a glance is enough. Each card carries, in this order: one ask line
+// (current stage only, checklist-answered: one thing + exactly where
+// it goes), a 📊 target counter (stageTargetFor; stage count only when
+// no target is stated), 💡 Muse's proposals for THIS stage's page
+// (stageProposalsHtml = unchanged fix15 museProposalsHtml, scoped by
+// category; open on the current stage, collapsed on confirmed stages,
+// placeholder-only on locked stages so stage order is not broken),
+// a 🧳 bring-your-own section (stage search terms, one short line),
+// delivery (link field / stage 📎 upload / link display), the 🤖
+// muse-note line, and an ✍️ feedback box. The GLOBAL fix15 proposals
+// block is therefore REMOVED from staged short guides only (the
+// function itself and its non-staged use are untouched); staged
+// proposals now live per stage, never all pages at once.
+// - FEEDBACK: the box has two fields, 'این‌ها رو نمی‌خوام چون…' and
+//   'این چیزهای دیگه رو نیاز داریم…', stored in the SAME stage step
+//   note as '⛔ نمی‌خوام چون: <text>' and '➕ چیزهای دیگه که نیاز
+//   داریم: <text>' via the EXISTING addNote/updateNote paths
+//   (saveStageFeedback). No new action/column. Canonical note order:
+//   🔗 link, 📎 files, other text, ⛔ dont, ➕ need, 🤖 muse (last, so
+//   its multi-line body parses to the end). Savers preserve all lines.
+// - NOTE SIZE: step notes share panel-api's 1000-char note limit, so
+//   link + files + feedback + muse note for one stage must fit in
+//   1000 chars total; the UI keeps every field short for this reason.
+// - Step titles themselves are NOT rewritten: they are persistent
+//   server data already created by createGuideSteps; only the guide
+//   prose was shortened. The steps list under 'گام‌ها' is unchanged.
+function isStagedTask(t){
+  const det = (t.detail || '') || (typeof taskDetail === 'function' ? taskDetail(t) : '');
+  const tt = { title: t.title, category: t.category, detail: det, id: t.id, assignee: t.assignee };
+  try { if (tailoredGuideFor(tt).staged) return true; } catch(e){}
+  const txt = ((t.title || '') + ' ' + det).toLowerCase();
+  return txt.indexOf('هر پیج') >= 0 || txt.indexOf('هر ۵') >= 0 || txt.indexOf('هر پنج') >= 0;
+}
+function stagedStepsFor(todoId){
+  return stepsFor(todoId).filter(function(s){ return /مرحلهٔ\s*[0-9۱۲۳۴۵]\s*از\s*۵/.test(s.text || ''); });
+}
+function stageKindFor(goal){
+  const g = String(goal || '');
+  if (g.indexOf('هندل') >= 0) return 'handle';
+  if (g.indexOf('ترکیب') >= 0) return 'combo';
+  if (g.indexOf('مدل') >= 0) return 'models';
+  return 'search';
+}
+function stageTermsFor(kind, cat){
+  if (kind === 'models') return ['minimal logotype design', 'modern logo mark vector', 'persian typography logo'];
+  if (kind === 'combo') return ['ترکیب: وکتور نهایی نگین + استایل نهایی امیر'];
+  if (kind === 'handle') return cat === 'شاهنامه' ? ['pretimetv، بعد pretime، بعد pre.time'] : ['هندل هم‌نام شبکه‌های دیگر همین پیج'];
+  return PAGE_SEARCH_PHRASES[cat].phrases.slice();
+}
+function stageShortLine(kind, cat){
+  const page = PAGE_SEARCH_PHRASES[cat].page;
+  if (kind === 'combo') return 'پیج ' + page + ': ترکیب وکتور + استایل → ترکیب را در یادداشت همین مرحله بنویس → صبر کن تا میوز تأیید کنه';
+  if (kind === 'handle') return 'پیج ' + page + ': هندل را امتحان کن → نتیجه را در یادداشت همین مرحله بنویس → صبر کن تا میوز تأیید کنه';
+  return 'پیج ' + page + ': سرچ‌ها → لینک بورد رو تو فیلد همین مرحله بذار + فایل‌ها رو تو 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه';
+}
+function stageNoteParse(body){
+  const out = { link: '', files: [], muse: '', other: [], dont: '', need: '' };
+  const lines = String(body || '').split('\n');
+  let mode = 'other';
+  const buckets = { other: [], dont: [], need: [], muse: [] };
+  for (let li = 0; li < lines.length; li++){
+    const raw = lines[li];
+    const line = raw.trim();
+    if (line.indexOf('🔗 لینک بورد:') === 0) { out.link = line.slice('🔗 لینک بورد:'.length).trim(); mode = 'other'; continue; }
+    if (line.indexOf('📎 فایل‌های این مرحله:') === 0) { const rest = line.slice('📎 فایل‌های این مرحله:'.length).trim(); out.files = rest ? rest.split(/،|,/).map(function(s){ return s.trim(); }).filter(Boolean) : []; mode = 'other'; continue; }
+    if (line.indexOf('⛔ نمی‌خوام چون:') === 0) { buckets.dont.push(line.slice('⛔ نمی‌خوام چون:'.length).trim()); mode = 'dont'; continue; }
+    if (line.indexOf('➕ چیزهای دیگه که نیاز داریم:') === 0) { buckets.need.push(line.slice('➕ چیزهای دیگه که نیاز داریم:'.length).trim()); mode = 'need'; continue; }
+    if (line.indexOf('🤖 یادداشت میوز:') === 0) { buckets.muse.push(line.slice('🤖 یادداشت میوز:'.length).trim()); mode = 'muse'; continue; }
+    if (!line && mode !== 'muse') continue;
+    buckets[mode].push(mode === 'muse' ? raw : line);
+  }
+  out.other = buckets.other;
+  out.dont = buckets.dont.join('\n').trim();
+  out.need = buckets.need.join('\n').trim();
+  out.muse = buckets.muse.join('\n').trim();
+  return out;
+}
+function stageNoteBuild(p){
+  const parts = [];
+  if (p.link) parts.push('🔗 لینک بورد: ' + p.link);
+  if (p.files && p.files.length) parts.push('📎 فایل‌های این مرحله: ' + p.files.join('، '));
+  if (p.other && p.other.length) { for (let i = 0; i < p.other.length; i++) parts.push(p.other[i]); }
+  if (p.dont) parts.push('⛔ نمی‌خوام چون: ' + p.dont);
+  if (p.need) parts.push('➕ چیزهای دیگه که نیاز داریم: ' + p.need);
+  if (p.muse) parts.push('🤖 یادداشت میوز: ' + p.muse);
+  return parts.join('\n');
+}
+function stageFileMap(t){
+  const map = {};
+  stagedStepsFor(t.id).forEach(function(s, i){
+    const sn = stepNoteFor(t.id, s.id);
+    if (!sn) return;
+    stageNoteParse(sn.body).files.forEach(function(fn){ map[fn] = { n: i + 1, page: PAGE_SEARCH_PHRASES[STAGE_ORDER[i]].page }; });
+  });
+  return map;
+}
+function digitsToLatin(s){
+  return String(s || '').replace(/[۰-۹]/g, function(d){ return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }).replace(/[٠-٩]/g, function(d){ return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); });
+}
+// Fix16b progress target: ONLY a number stated in the task's own title
+// or detail (e.g. '۱۰ وکتور'). Persian/Arabic digits are converted.
+// Models sum every stated 'N مدل' (e.g. '۵ مدل گرافیک + ۵ مدل تایپوگرافی'
+// => 10 مدل). Nothing else is a target: no target => null, and the card
+// shows the stage count only. Never invent a target.
+function stageTargetFor(tt, kind){
+  const txt = ((tt.title || '') + ' ' + (tt.detail || ''));
+  const vec = txt.match(/([۰-۹٠-٩0-9]+)\s*وکتور/);
+  if (vec) return { n: parseInt(digitsToLatin(vec[1]), 10), unit: 'وکتور' };
+  if (kind === 'models') {
+    let total = 0; const re = /([۰-۹٠-٩0-9]+)\s*مدل/g; let m;
+    while ((m = re.exec(txt)) !== null) total += parseInt(digitsToLatin(m[1]), 10);
+    if (total > 0) return { n: total, unit: 'مدل' };
+  }
+  return null;
+}
+// Fix16b per-stage proposals: the UNCHANGED fix15 museProposalsHtml,
+// scoped to this stage's page by passing category=cat and a BLANK
+// detail, so no other page's keyword in a long detail can hijack the
+// frame (page comes from the stage category + the task title, which
+// carries the section keywords like لوگو/رنگ/فونت). The global guide
+// block for staged tasks is gone (see tailoredGuideHtml fix16 note);
+// this per-stage call is where proposals now live.
+function stageProposalsHtml(t, cat){
+  return museProposalsHtml({ title: t.title, category: cat, detail: '' });
+}
+// Fix16b ask line: the self-question checklist answered in the ask
+// itself — one thing, at this moment, naming exactly where it goes
+// (stage link field / stage 📎 upload / stage note field), never vague.
+function stageAskLine(kind){
+  if (kind === 'combo') return 'الان فقط این یک کار را بکن: ترکیب «این وکتور + این استایل» را در یادداشت همین مرحله بنویس.';
+  if (kind === 'handle') return 'الان فقط این یک کار را بکن: هندل را امتحان کن و نتیجه را در یادداشت همین مرحله بنویس.';
+  return 'الان فقط این یک کار را بکن: با عبارت‌های زیر سرچ کن، لینک بورد این پیج را در فیلد «لینک بورد این پیج» بذار و فایل‌ها را با دکمهٔ «آپلود برای همین مرحله» همین‌جا آپلود کن.';
+}
+function stageFilesHtml(todoId, parsed){
+  if (!parsed.files.length) return '<p class="meta">هنوز فایلی برای این مرحله ثبت نشده.</p>';
+  const atts = attachmentsFor(todoId);
+  return '<div style="margin-top:6px">' + parsed.files.map(function(fn){
+    const a = atts.find(function(x){ return x.file_name === fn; });
+    return '<div style="line-height:1.9">📎 ' + esc(fn) + (a ? ' <button class="btn-ghost btn-sm" onclick="openAttachment(' + a.id + ')">باز کردن</button>' : ' <span class="meta">(در بخش 📎 پیدا نشد — شاید حذف شده)</span>') + '</div>';
+  }).join('') + '</div>';
+}
+function stageCardsHtml(t){
+  const tt = { title: t.title, category: t.category, detail: taskDetail(t), id: t.id, assignee: t.assignee };
+  if (!isStagedTask(tt)) return '';
+  const g = tailoredGuideFor(tt);
+  const kind = stageKindFor(g.goal);
+  const target = stageTargetFor(tt, kind);
+  const steps = stagedStepsFor(t.id);
+  const doneCount = steps.filter(function(s){ return s.done; }).length;
+  const foundIdx = steps.length ? steps.findIndex(function(s){ return !s.done; }) : 0;
+  const allDone = steps.length > 0 && foundIdx === -1;
+  const curLabel = steps.length ? (allDone ? 5 : foundIdx + 1) : 1;
+  let html = '<h2 style="margin-top:16px">مرحله‌های این کار</h2>';
+  html += '<div class="meta" style="line-height:1.9">مرحلهٔ ' + curLabel + ' از ۵ — ' + doneCount + ' تأیید شده. هر مرحله لینک بورد، فایل‌ها و وضعیت خودش را دارد؛ مرحلهٔ بعد فقط بعد از تأیید مرحلهٔ قبل باز می‌شود.</div>';
+  if (!steps.length) {
+    html += '<p class="meta" style="line-height:1.9">هنوز گام مرحله‌ای ساخته نشده؛ اول ۵ گام مرحله‌ای را بساز تا فیلد لینک و تحویل هر مرحله فعال شود.</p><button class="btn-teal btn-sm" style="margin-top:8px" onclick="ensureStageSteps(' + t.id + ',this)">ساختن ۵ گام مرحله‌ای</button>';
+  }
+  html += STAGE_ORDER.map(function(cat, i){
+    const pg = PAGE_SEARCH_PHRASES[cat];
+    const termsLabel = kind === 'combo' ? 'کار این مرحله: ' : (kind === 'handle' ? 'امتحان کن: ' : 'سرچ‌ها: ');
+    const byoHtml = '<div style="line-height:1.9;margin-top:8px"><b>🧳 مال خودت:</b> ' + termsLabel + esc(stageTermsFor(kind, cat).join(' ، ')) + '</div>';
+    const step = steps[i] || null;
+    if (!step) {
+      return '<div class="card" style="margin-bottom:10px"><div style="line-height:1.9"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">⏳ در انتظار</span></div>' + byoHtml + '<div class="meta" style="line-height:1.9">گام این مرحله هنوز ساخته نشده. 💡 پیشنهادها و ✍️ بازخورد این مرحله بعد از ساختن گام‌ها این‌جا می‌آید.</div></div>';
+    }
+    const sn = stepNoteFor(t.id, step.id);
+    const parsed = stageNoteParse(sn ? sn.body : '');
+    const status = step.done ? '✅ تأیید شد' : ((parsed.link || parsed.files.length) ? '📥 تحویل داده شد' : '⏳ در انتظار');
+    const locked = !step.done && !allDone && i > foundIdx;
+    const filesHtml = stageFilesHtml(t.id, parsed);
+    const progressHtml = target
+      ? '<div style="line-height:1.9">📊 پیشرفت این مرحله: ' + parsed.files.length + ' از ' + target.n + ' ' + target.unit + (parsed.files.length < target.n ? ' · ' + (target.n - parsed.files.length) + ' مانده' : ' · هدف پر شد') + '</div>'
+      : '';
+    const proposalsHtml = locked
+      ? '<div class="meta" style="line-height:1.9">💡 پیشنهادهای میوز برای این پیج: بعد از باز شدن مرحله این‌جا می‌آید.</div>'
+      : '<details ' + (step.done ? '' : 'open') + ' style="margin-top:8px"><summary style="line-height:1.9;cursor:pointer">💡 پیشنهادهای میوز برای این پیج</summary>' + stageProposalsHtml(t, cat) + '</details>';
+    const museLine = '<div style="line-height:1.9">🤖 یادداشت میوز: ' + (parsed.muse ? esc(parsed.muse) : '<span class="meta">هنوز نوشته نشده</span>') + '</div>';
+    const otherHtml = parsed.other.length ? '<div style="line-height:1.9">📝 یادداشت مرحله: ' + esc(parsed.other.join(' / ')) + '</div>' : '';
+    const feedbackHtml = locked
+      ? '<div class="meta" style="line-height:1.9">✍️ بازخورد این مرحله: بعد از باز شدن مرحله این‌جا می‌آید.</div>'
+      : '<div style="margin-top:8px"><label style="line-height:1.9">✍️ بازخورد تو روی پیشنهادها</label><textarea id="stageDontInput-' + i + '" placeholder="این‌ها رو نمی‌خوام چون…" style="min-height:44px;margin-top:4px">' + esc(parsed.dont) + '</textarea><textarea id="stageNeedInput-' + i + '" placeholder="این چیزهای دیگه رو نیاز داریم…" style="min-height:44px">' + esc(parsed.need) + '</textarea><button class="btn-teal btn-sm" style="margin-top:4px" onclick="saveStageFeedback(' + t.id + ',' + i + ',this)">ذخیرهٔ بازخورد</button></div>';
+    const checkHtml = '<label style="display:flex;gap:8px;align-items:center;line-height:1.9;margin-top:8px"><input type="checkbox" ' + (step.done ? 'checked' : '') + (locked ? ' disabled' : '') + ' onchange="toggleViewStep(' + t.id + ',' + step.id + ',this.checked)"> تأیید این مرحله (تیک گام مرحله — معمولاً میوز بعد از چیدمان می‌زند)</label>';
+    let body = '';
+    if (locked) {
+      body = '<div class="meta" style="line-height:1.9">🔒 بعد از تأیید مرحلهٔ قبل باز می‌شود</div>' + progressHtml + proposalsHtml + byoHtml + museLine + feedbackHtml + checkHtml;
+    } else if (step.done) {
+      body = progressHtml + proposalsHtml + byoHtml +
+        '<div style="line-height:1.9;margin-top:8px">🔗 لینک بورد این پیج: ' + (parsed.link ? '<a href="' + esc(parsed.link) + '" target="_blank" rel="noopener">' + esc(parsed.link) + '</a>' : '<span class="meta">ثبت نشده</span>') + '</div>' + filesHtml + museLine + otherHtml + feedbackHtml + '<div class="meta" style="line-height:1.9">این مرحله تأیید شده؛ فایل جدید را در مرحلهٔ جاری بگذار.</div>' + checkHtml;
+    } else {
+      body = '<div style="line-height:1.9"><b>' + stageAskLine(kind) + '</b></div>' + progressHtml + proposalsHtml + byoHtml +
+        '<div style="line-height:1.9;margin-top:8px;margin-bottom:6px"><label>لینک بورد این پیج</label><div class="row" style="gap:8px;margin-top:4px"><input type="text" id="stageLinkInput-' + i + '" value="' + esc(parsed.link) + '" placeholder="لینک بورد این پیج…" style="flex:1;margin-bottom:0" dir="ltr"><button class="btn-teal btn-sm" onclick="saveStageLink(' + t.id + ',' + i + ',this)">ذخیرهٔ لینک</button></div></div>' +
+        '<div style="line-height:1.9">📎 فایل‌های این مرحله — فقط از همین کارت آپلود کن تا به همین مرحله وصل شوند:</div>' + filesHtml +
+        '<div class="row" style="gap:8px;margin-top:8px"><input type="file" id="stageFileInput-' + i + '" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style="flex:1;min-width:0"><button class="btn-teal btn-sm" onclick="uploadStageFile(' + t.id + ',' + i + ',this)">⬆️ آپلود برای همین مرحله</button></div>' +
+        '<div id="stageUploadStatus-' + i + '" class="meta" style="margin-top:6px"></div>' + museLine + otherHtml + feedbackHtml + checkHtml;
+    }
+    return '<div class="card" style="margin-bottom:10px"><div style="line-height:1.9"><b>مرحلهٔ ' + (i + 1) + ' از ۵ — ' + esc(pg.page) + '</b> <span class="chip" style="font-size:.75rem">' + status + '</span></div>' + body + '</div>';
+  }).join('');
+  return html;
+}
+
+async function saveStageLink(todoId, stageIdx, btn){
+  const el = document.getElementById('stageLinkInput-' + stageIdx);
+  const link = el ? el.value.trim() : '';
+  const step = stagedStepsFor(todoId)[stageIdx];
+  if (!step) return showErr('گام این مرحله ساخته نشده');
+  if (btn) btn.disabled = true;
+  try {
+    const sn = stepNoteFor(todoId, step.id);
+    const parsed = stageNoteParse(sn ? sn.body : '');
+    parsed.link = link;
+    const full = stepNotePrefix(todoId, step.id) + stageNoteBuild(parsed);
+    if (sn) await call('updateNote', { id: sn.id, text: full });
+    else await call('addNote', { text: full });
+    await refresh(); openTaskView(todoId);
+  } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
+}
+async function saveStageFeedback(todoId, stageIdx, btn){
+  const dontEl = document.getElementById('stageDontInput-' + stageIdx);
+  const needEl = document.getElementById('stageNeedInput-' + stageIdx);
+  const dont = dontEl ? dontEl.value.trim() : '';
+  const need = needEl ? needEl.value.trim() : '';
+  const step = stagedStepsFor(todoId)[stageIdx];
+  if (!step) return showErr('گام این مرحله ساخته نشده');
+  if (btn) btn.disabled = true;
+  try {
+    const sn = stepNoteFor(todoId, step.id);
+    const parsed = stageNoteParse(sn ? sn.body : '');
+    parsed.dont = dont; parsed.need = need;
+    const full = stepNotePrefix(todoId, step.id) + stageNoteBuild(parsed);
+    if (sn) await call('updateNote', { id: sn.id, text: full });
+    else await call('addNote', { text: full });
+    await refresh(); openTaskView(todoId);
+  } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
+}
+async function uploadStageFile(todoId, stageIdx, btn){
+  const input = document.getElementById('stageFileInput-' + stageIdx);
+  const status = document.getElementById('stageUploadStatus-' + stageIdx);
+  const file = input && input.files && input.files[0];
+  if (!file) return showErr('اول یک فایل انتخاب کن');
+  const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
+  if (allowed.indexOf(file.type) === -1) return showErr('فقط عکس (PNG/JPEG/WebP/GIF) و PDF قبول می‌شود');
+  if (file.size > 10 * 1024 * 1024) return showErr('فایل بزرگ‌تر از ۱۰ مگابایت است');
+  const step = stagedStepsFor(todoId)[stageIdx];
+  if (!step) return showErr('گام این مرحله ساخته نشده');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'در حال آماده‌سازی آپلود…';
+  try {
+    const req = await call('requestUpload', { todo_id: todoId, file_name: file.name, mime: file.type, size_bytes: file.size });
+    if (status) status.textContent = 'در حال آپلود…';
+    const put = await fetch(req.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+    if (!put.ok) throw new Error('آپلود ناموفق بود — دوباره تلاش کن');
+    if (status) status.textContent = 'در حال ثبت فایل برای همین مرحله…';
+    await call('confirmUpload', { id: req.attachment.id });
+    const sn = stepNoteFor(todoId, step.id);
+    const parsed = stageNoteParse(sn ? sn.body : '');
+    if (parsed.files.indexOf(file.name) === -1) parsed.files.push(file.name);
+    const full = stepNotePrefix(todoId, step.id) + stageNoteBuild(parsed);
+    if (sn) await call('updateNote', { id: sn.id, text: full });
+    else await call('addNote', { text: full });
+    await refresh(); openTaskView(todoId);
+  } catch(e){
+    showErr(e.message || 'آپلود ناموفق بود');
+    if (btn) btn.disabled = false;
+    if (status) status.textContent = '';
+  }
+}
+async function ensureStageSteps(todoId, btn){
+  if (stagedStepsFor(todoId).length) { await refresh(); openTaskView(todoId); return; }
+  if (btn) btn.disabled = true;
+  try {
+    for (let i = 0; i < STAGE_ORDER.length; i++){
+      const cat = STAGE_ORDER[i];
+      await call('addStep', { todo_id: todoId, title: 'مرحلهٔ ' + (i + 1) + ' از ۵ — فقط ' + PAGE_SEARCH_PHRASES[cat].page + ': تحویل این پیج — لینک بورد را در فیلد همین مرحله بذار + فایل‌ها را در 📎 همین مرحله آپلود کن → صبر کن تا میوز تأیید کنه' });
+    }
+    await refresh(); openTaskView(todoId);
+  } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
+}
+async function stripStageFile(todoId, fileName){
+  try {
+    const steps = stagedStepsFor(todoId);
+    for (let i = 0; i < steps.length; i++){
+      const sn = stepNoteFor(todoId, steps[i].id);
+      if (!sn) continue;
+      const parsed = stageNoteParse(sn.body);
+      if (parsed.files.indexOf(fileName) === -1) continue;
+      parsed.files = parsed.files.filter(function(f){ return f !== fileName; });
+      await call('updateNote', { id: sn.id, text: stepNotePrefix(todoId, steps[i].id) + stageNoteBuild(parsed) });
+    }
+  } catch(e){ /* best-effort only: the delete itself already succeeded */ }
 }
 
 // ---------- Task sheet (bottom sheet, in-place editing via updateTodo) ----------
@@ -2096,6 +2467,12 @@ function isAttachImage(mime){
 
 function attachmentsHtml(todoId){
   const list = attachmentsFor(todoId);
+  // Fix16: on staged tasks each file is labelled with its stage, read
+  // from the stage step notes (stageFileMap). 'بدون مرحله' = uploaded
+  // from the shared section, not from a stage card.
+  const _attTask = (typeof S !== 'undefined' && S && S.todos) ? S.todos.find(function(x){ return String(x.id) === String(todoId); }) : null;
+  const _attStaged = !!(_attTask && isStagedTask(_attTask));
+  const _attStageMap = _attStaged ? stageFileMap(_attTask) : {};
   const items = list.length
     ? list.map(function(a){
         const thumb = isAttachImage(a.mime)
@@ -2106,11 +2483,12 @@ function attachmentsHtml(todoId){
           + '<div class="row" style="gap:8px;align-items:center;flex:1;min-width:0">'
           + thumb
           + '<div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.file_name || 'فایل') + '</div>'
-          + '<div class="meta">' + esc(a.uploader_name || '') + (a.created_at ? ' · ' + fmtCreated(a.created_at) : '') + (kb ? ' · ' + kb : '') + '</div></div></div>'
+          + '<div class="meta">' + esc(a.uploader_name || '') + (a.created_at ? ' · ' + fmtCreated(a.created_at) : '') + (kb ? ' · ' + kb : '') + (_attStageMap[a.file_name] ? ' · مرحلهٔ ' + _attStageMap[a.file_name].n + ' از ۵ — ' + _attStageMap[a.file_name].page : (_attStaged ? ' · بدون مرحله' : '')) + '</div></div></div>'
           + '<button class="btn-danger btn-sm" onclick="deleteTaskAttachment(' + todoId + ',' + a.id + ',this)">حذف</button></div>';
       }).join('')
     : '<p class="meta">هنوز فایلی برای این کار آپلود نشده.</p>';
   return '<h2 style="margin-top:16px">📎 فایل‌های این کار</h2>'
+    + (_attStaged ? '<p class="meta" style="line-height:1.9">مرحلهٔ هر فایل از یادداشت همان گام خوانده می‌شود؛ فایل «بدون مرحله» از کارت مرحله آپلود نشده است.</p>' : '')
     + '<p class="meta" style="line-height:1.9">مدل‌ها، وکتورها و فایل‌های این کار را همین‌جا آپلود کن — همین‌جاست که میوز می‌بیندشان. فقط عکس (PNG/JPEG/WebP/GIF) و PDF، هر فایل حداکثر ۱۰ مگابایت، حداکثر ۲۰ فایل برای هر کار.</p>'
     + items
     + '<div class="row" style="gap:8px;margin-top:8px"><input type="file" id="attachFileInput" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style="flex:1;min-width:0">'
@@ -2168,7 +2546,9 @@ async function deleteTaskAttachment(todoId, id, btn){
   if (!confirm('این فایل حذف شود؟')) return;
   try {
     if (btn) btn.disabled = true;
+    const _delRow = attachmentsFor(todoId).find(function(a){ return a.id === id; });
     await call('deleteAttachment', { id: id });
+    if (_delRow) await stripStageFile(todoId, _delRow.file_name);
     await refresh();
     openTaskView(todoId);
   } catch (e) { showErr(e.message); if (btn) btn.disabled = false; }
@@ -2204,6 +2584,7 @@ function renderTaskView(){
     (det ? '<div style="line-height:1.9">'+guideListHtml(det)+'</div>' : '<p class="meta">توضیحی نوشته نشده.</p>') +
     '<h2>گام‌ها</h2>' + stepsHtml +
     guideSection +
+    stageCardsHtml(t) +
     attachmentsHtml(t.id) +
     '<h2 style="margin-top:16px">اسکرین‌شات قدم‌ها</h2>' +
     '<p class="meta" style="line-height:1.9">کادر زیر فقط برای یک یادداشت یک‌خطی است (مثلاً «مدل‌ها پیدا شد») و برای نتیجه‌های متنی مثل هندل و نام؛ خودِ فایل‌ها در بخش 📎 همین برگه آپلود می‌شوند — همان‌جاست که میوز می‌بیندشان. قدم‌های داخل پنل اسکرین لازم ندارند؛ انجامشان را از روی همان برگه می‌بینی.</p>' +
