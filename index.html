@@ -185,25 +185,22 @@
   <div id="app" style="display:none">
     <!-- ============ HOME (was: dashboard) ============ -->
     <section class="screen on" id="scr-home">
-      <div class="card" id="passCard">
-        <b>تعیین رمز عبور پنل وب</b>
-        <p class="meta">با این رمز، بعداً از صفحهٔ ورود وارد می‌شوی. (ورود با دعوت‌نامه رمز ندارد؛ رمز را همین‌جا یک بار تعیین کن. اگر قبلاً رمز گذاشته‌ای، رمزت را عوض نکن — دکمهٔ «قبلاً رمز گذاشتم» را بزن.)</p>
-        <div class="row">
-          <div class="pw-wrap" style="flex:1"><input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left"><button type="button" class="pw-toggle" aria-label="نمایش رمز" onclick="togglePw('newPass',this)">👁</button></div>
-          <button class="btn-teal" onclick="setPassword()">ذخیرهٔ رمز</button>
-        </div>
-        <div class="row"><button class="btn-ghost btn-sm" onclick="dismissPassCard()">قبلاً رمز گذاشتم، این کارت را ببند</button></div>
-        <span id="passMsg" class="meta"></span>
-      </div>
-      <div class="card" id="passDone" style="display:none">✅ رمز پنل وب ذخیره شد؛ از این به بعد با همین رمز وارد شو.</div>
+      <!-- Fix3: the set-password card is GONE from Home. It used to return on
+           every new device because its dismiss relied on a per-device localStorage
+           flag plus a silent, possibly stale/failed user_metadata update. Password
+           changing now lives only in the More sheet ('تغییر رمز عبور'). -->
+      <div id="homeDash"></div>
+      <div id="pendingBox"></div>
+      <details id="homeSecondary" style="margin-top:12px">
+        <summary style="cursor:pointer;font-weight:bold;padding:8px 0">📊 توازن کارها، امروز و تحلیل</summary>
       <div class="kpis" id="kpis"></div>
       <p class="meta" id="kpiSummary" style="text-align:center"></p>
-      <div id="pendingBox"></div>
       <h2>توازن کارها</h2><div id="balanceBox"></div>
       <h2>امروز</h2><div id="todayBox"></div>
       <h2>خلاصهٔ تحلیل</h2><div id="homeAnalytics"></div>
       <button class="btn-ghost" style="width:100%" onclick="showScreen('analytics')">دیدن همهٔ تحلیل‌ها</button>
       <h2>پیشنهادهای بعدی</h2><div id="suggBox"></div>
+      </details>
     </section>
 
     <!-- ============ TASKS (list / board / my tasks) ============ -->
@@ -314,7 +311,7 @@
 
     <!-- ============ CHANNELS (simple directory, localStorage as before) ============ -->
     <section class="screen" id="scr-channels">
-      <div class="card"><p style="margin:0;line-height:1.8">کانال‌های هر دسته با هندل و لینک. این فهرست دستی است و روی همین دستگاه ذخیره می‌شود؛ آمار زندهٔ پلتفرم‌ها (مثل بازدید اینستاگرام که فقط داخل اپ است) به‌صورت خودکار همگام نمی‌شود — تحلیل پنل از روی کارها، خط لوله و گزارش‌های ثبت‌شده محاسبه می‌شود.</p></div>
+      <div class="card"><p style="margin:0;line-height:1.8">کانال‌های هر دسته با هندل و لینک. این فهرست دستی است و روی همین دستگاه ذخیره می‌شود؛ آمار زندهٔ پلتفرم‌ها (مثل بازدید اینستاگرام که فقط داخل اپ است) به‌صورت خودکار همگام نمی‌شود — تحلیل پنل از روی کارها، خط لوله و گزارش‌های ثبت‌شده محاسبه می‌شود. توجه: ویرایش کانال‌ها فعلاً فقط روی همین دستگاه ذخیره می‌شود؛ تا جدول مشترک کانال‌ها (قدم یک یکپارچه‌سازی) ساخته نشود، ویرایش روی یک دستگاه روی دستگاه دیگر دیده نمی‌شود.</p></div>
       <div id="chanList"></div>
     </section>
 
@@ -400,33 +397,16 @@ function togglePw(id, btn){
   btn.textContent = show ? '🙈' : '👁';
 }
 function syncPassCard(){
-  if (PANEL_BUILD !== 'web') return;
-  let done = false;
-  try { done = localStorage.getItem('panelPassSet') === '1'; } catch(e) {}
-  try {
-    if (!done && supabaseSession && supabaseSession.user && supabaseSession.user.user_metadata
-      && supabaseSession.user.user_metadata.panelPassDismissed) done = true;
-  } catch(e) {}
-  const card = document.getElementById('passCard'), note = document.getElementById('passDone');
-  if (card) card.style.display = done ? 'none' : 'block';
-  // Fix2: the saved-password banner must NEVER appear on a load just
-  // because a password was set earlier. It shows only transiently, in
-  // the same session, right after setPassword() actually sets one.
-  if (note) {
-    if (window.__passJustSet) {
-      note.style.display = 'block';
-      if (!window.__passJustSetTimer) {
-        window.__passJustSetTimer = setTimeout(function(){
-          window.__passJustSet = false; window.__passJustSetTimer = null;
-          var n = document.getElementById('passDone'); if (n) n.style.display = 'none';
-        }, 5000);
-      }
-    } else note.style.display = 'none';
-  }
+  // Fix3: there is no Home password card any more, so there is nothing to
+  // show or hide here. Kept as a no-op because setPassword() calls it.
+  // The saved-password banner (passDone) was removed with the card and
+  // therefore can never appear on load either.
+  const note = document.getElementById('passDone'); if (note) note.style.display = 'none';
+  const card = document.getElementById('passCard'); if (card) card.style.display = 'none';
 }
 async function dismissPassCard(){
-  try { localStorage.setItem('panelPassSet', '1'); } catch(e) {}
-  try { if (supabaseClient) await supabaseClient.auth.updateUser({data: {panelPassDismissed: true}}); } catch(e) {}
+  // Fix3 stub: the Home card no longer exists, so dismissing is a no-op.
+  // The account-level flag is still written by setPassword() itself.
   syncPassCard();
 }
 const PANEL_BUILD = 'web';
@@ -602,7 +582,20 @@ function openMoreSheet(btn){
     '<button class="more-item" onclick="closeSheet();showScreen(\'analytics\')">📈 تحلیل <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'channels\')">📡 کانال‌ها <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'notes\')">💡 یادداشت و پرسش <span>‹</span></button>' +
-    '<button class="more-item" onclick="closeSheet();goArchive()">🗄️ بایگانی کارهای انجام‌شده <span>‹</span></button>'
+    '<button class="more-item" onclick="closeSheet();goArchive()">🗄️ بایگانی کارهای انجام‌شده <span>‹</span></button>' +
+    (PANEL_BUILD === 'web' ? '<button class="more-item" onclick="closeSheet();openPassSheet()">🔑 تغییر رمز عبور <span>‹</span></button>' : '')
+  );
+}
+function openPassSheet(){
+  // Fix3: the only password form in the app now lives here (More sheet).
+  // It reuses setPassword() unchanged: same input ids, same account-level
+  // panelPassDismissed flag, no Home card that can return.
+  openSheet(
+    '<div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin-top:0;margin-bottom:0">تغییر رمز عبور</h2><button class="btn-ghost btn-sm" onclick="closeSheet()">✕ بستن</button></div>' +
+    '<p class="meta" style="line-height:1.8">با این رمز، بعداً از صفحهٔ ورود وارد می‌شوی. اگر قبلاً رمز گذاشته‌ای و فقط می‌خواهی آن را عوض کنی، رمز تازه را اینجا بنویس.</p>' +
+    '<div class="pw-wrap" style="margin-bottom:10px"><input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left"><button type="button" class="pw-toggle" aria-label="نمایش رمز" onclick="togglePw(\'newPass\',this)">👁</button></div>' +
+    '<button class="btn-teal" style="width:100%" onclick="setPassword()">ذخیرهٔ رمز</button>' +
+    '<span id="passMsg" class="meta"></span>'
   );
 }
 function fillCats(){
@@ -619,7 +612,7 @@ function fillCats(){
   document.getElementById('repDateView').value = fmtStoredDate(now);
   document.getElementById('todoDeadline').value = '';
   document.getElementById('todoDeadlineView').value = '';
-  renderTaskChips(); renderPipeCatChips(); renderRepCatChips();
+  renderTaskChips(); renderRepCatChips(); // Fix3: the old pipeline-chip renderer never existed (fix2 replaced the chips with a dropdown); its call threw on every refresh and showed the red banner.
 }
 function renderAll(){ renderDash(); renderTasks(); renderReports(); renderPipe(); renderCal(); renderAnalytics(); renderMuse(); renderChannels(); renderSuggestions(); }
 
@@ -944,10 +937,118 @@ async function importLocalSteps(){
   if (anyImported) await refresh();
 }
 
+// ---------- Fix3: Home personalised action dashboard ----------
+// The logged-in user is identified exactly like mePerson() does:
+// amirmajidi1375@gmail.com (or tgId 94731359) = Amir, anyone else = Negin.
+// A 'both' task belongs to both; a single-assignee task only to its owner.
+function homeMeName(){
+  if (!S || !S.me) return 'شما';
+  if (S.me.name) return S.me.name;
+  return mePerson() === 'amir' ? 'امیر' : 'نگین';
+}
+function homeMyOpenTasks(){
+  if (!S) return [];
+  const me = mePerson();
+  return S.todos.filter(t=>t.status !== 'done' && (t.assignee === me || t.assignee === 'both'));
+}
+function homeUrgencySort(list){
+  return list.slice().sort((a,b)=>{
+    const da = daysUntil(a.deadline), db = daysUntil(b.deadline);
+    const aOver = (da !== null && da < 0) ? 0 : 1, bOver = (db !== null && db < 0) ? 0 : 1;
+    if (aOver !== bOver) return aOver - bOver;
+    if (da === null && db !== null) return 1;
+    if (db === null && da !== null) return -1;
+    if (da !== null && db !== null && da !== db) return da - db;
+    const r = taskStatusRank(a.status) - taskStatusRank(b.status); if (r) return r;
+    return (Number(b.created_at || 0) - Number(a.created_at || 0));
+  });
+}
+function homeIsAccountTask(t){
+  const text = ((t.title || '') + ' ' + (t.category || '') + ' ' + taskDetail(t)).toLowerCase();
+  return text.indexOf('تیک‌تاک') >= 0 || text.indexOf('tiktok') >= 0 || (text.indexOf('اکانت') >= 0 && text.indexOf('ساخت') >= 0) || (text.indexOf('حساب') >= 0 && text.indexOf('ساخت') >= 0);
+}
+function homeStepsChecklist(t){
+  const steps = stepsFor(t.id);
+  if (!steps.length) return '';
+  return '<div class="sub-list" onclick="event.stopPropagation()">' + steps.map(s=>{
+    return '<div class="sub-step'+(s.done?' done':'')+'"><input type="checkbox" '+(s.done?'checked':'')+' onchange="toggleStepInline('+t.id+','+s.id+',this.checked,event)"><div style="flex:1;min-width:0"><div class="sub-title">'+esc(s.text)+'</div></div></div>';
+  }).join('') + '</div>';
+}
+function homeSetChan(cat, val){
+  const data = loadChannels();
+  const rows = data[cat] || [];
+  let idx = -1;
+  for (let i = 0; i < rows.length; i++) { if (rows[i].net === 'تیک‌تاک') { idx = i; break; } }
+  if (idx < 0) return;
+  chanInput(cat, idx, val);
+  renderDash();
+}
+function homeTikTokRows(){
+  // One line per page, from the panel's own Channels data ONLY. No handle
+  // is invented here: an empty handle renders as 'هنوز ثبت نشده' with an
+  // inline field that saves through the existing chanInput behaviour.
+  const data = loadChannels();
+  const cats = CHANNEL_CATS.filter(c=>c !== 'بنیادی');
+  return cats.map(cat=>{
+    const rows = data[cat] || [];
+    let ch = null;
+    for (let i = 0; i < rows.length; i++) { if (rows[i].net === 'تیک‌تاک') { ch = rows[i]; break; } }
+    const handle = ch ? (ch.handle || '') : '';
+    const status = ch ? (ch.status || '') : 'ساخته نشده — در انتظار';
+    const field = '<input type="text" value="'+esc(handle)+'" placeholder="هندل تیک‌تاک…" dir="ltr" style="text-align:left;flex:1;min-width:120px;margin-bottom:0" onchange="homeSetChan(\''+cat+'\',this.value)">';
+    return '<div class="row" style="align-items:center"><b style="min-width:86px">'+esc(cat)+'</b>' + field +
+      '<span class="meta" style="white-space:nowrap">' + (handle ? ' @' + esc(handle) + ' · ' + esc(status) : 'هنوز ثبت نشده · ' + esc(status)) + '</span></div>';
+  }).join('');
+}
+function homeMethodsCompact(t){
+  const methods = methodLibraryFor({ title: t.title, category: t.category, detail: taskDetail(t) });
+  return methods.map(m=>'<div style="margin-top:8px;line-height:1.8"><b>'+esc(m.name)+'</b> — '+esc(m.desc)+'<div class="meta">👍 '+esc(m.pros)+' · 👎 '+esc(m.cons)+'</div></div>').join('');
+}
+function homeTaskCard(t, showMethods){
+  const due = t.deadline ? fmtStoredDate(t.deadline) : 'بدون مهلت';
+  const d = daysUntil(t.deadline);
+  const dueLabel = (d !== null && d < 0) ? '🔴 دیرکرده · ' + due : (d === 0 ? '🟠 امروز · ' + due : due);
+  const steps = homeStepsChecklist(t);
+  const methodsBtn = '<button class="btn-ghost btn-sm" onclick="openTaskSheet('+t.id+');showMethodGuide()">۳ روش انجام ←</button>';
+  return '<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="flex:1;min-width:0"><b style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</b>' +
+    '<div class="meta" style="margin-top:4px">'+esc(t.category || 'نامشخص')+' · '+esc(ASSIGNEE[t.assignee] || t.assignee)+' · '+dueLabel+'</div></div>' + methodsBtn + '</div>' +
+    (showMethods ? '<div style="margin-top:6px"><b>راهنمای انجام</b>' + homeMethodsCompact(t) + '</div>' : '<div class="meta" style="margin-top:6px">راهنمای انجام: ' + (methodLibraryFor({ title: t.title, category: t.category, detail: taskDetail(t) }).map(m=>esc(m.name)).join(' · ')) + '</div>') +
+    (steps ? '<div style="margin-top:8px"><b>To Do</b>' + steps + '</div>' : '<div class="meta" style="margin-top:8px">هنوز گامی نیست — از برگهٔ کار، «تحلیل روش‌های انجام» را بزن تا گام‌هایش ساخته شوند.</div>') + '</div>';
+}
+function renderHomeDash(){
+  const el = document.getElementById('homeDash'); if (!el || !S) return;
+  const mine = homeUrgencySort(homeMyOpenTasks());
+  const name = homeMeName();
+  if (!mine.length) {
+    el.innerHTML = '<div class="card"><b>سلام '+esc(name)+' 👋</b><div style="margin-top:8px">کاری نداری 🎉</div>' +
+      '<button class="btn-teal" style="margin-top:10px" onclick="showScreen(\'tasks\');setTimeout(function(){ toggleTodoComposer(true); },50)">＋ افزودن کار</button></div>';
+    return;
+  }
+  const next = mine[0];
+  const detail = taskDetail(next);
+  const firstSentence = detail ? detail.split('\n')[0] : '';
+  const isAccount = homeIsAccountTask(next);
+  let nextHtml = '<div class="card" style="border:2px solid #2dd4bf"><div class="meta">قدم بعدی</div><b style="font-size:1.1rem;cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+next.id+')">'+esc(next.title)+'</b>' +
+    '<div style="margin-top:6px;line-height:1.8">' + (firstSentence ? esc(firstSentence) : 'این کار: '+esc(next.title)+' — دستهٔ '+esc(next.category || 'نامشخص')+'.') + '</div>' +
+    '<div class="meta" style="margin-top:4px">'+esc(next.category || 'نامشخص')+' · '+esc(ASSIGNEE[next.assignee] || next.assignee)+' · '+(next.deadline ? fmtStoredDate(next.deadline) : 'بدون مهلت')+'</div>' +
+    '<div style="margin-top:8px"><b>راهنمای انجام — ۳ روش</b>' + homeMethodsCompact(next) + '</div>';
+  if (isAccount) {
+    nextHtml += '<div style="margin-top:10px"><b>To Do — برای هر پیج، یکی</b><p class="meta" style="line-height:1.8">هر پیج که ساخته شد، هندلش را همین‌جا بنویس تا ثبت شود. هندل‌ها فقط از دادهٔ کانال‌های همین پنل می‌آیند؛ چیزی از خودم ساخته نشده است.</p>' + homeTikTokRows() + '</div>';
+  }
+  const steps = homeStepsChecklist(next);
+  nextHtml += (steps ? '<div style="margin-top:10px"><b>To Do</b>' + steps + '</div>' : (isAccount ? '' : '<div class="meta" style="margin-top:10px">هنوز گامی نیست — از برگهٔ کار، «تحلیل روش‌های انجام» را بزن تا گام‌هایش ساخته شوند.</div>'));
+  nextHtml += '<button class="btn-ghost btn-sm" style="margin-top:10px" onclick="openTaskSheet('+next.id+')">باز کردن برگهٔ کار</button></div>';
+  const rest = mine.slice(1);
+  el.innerHTML = '<div class="card" style="background:var(--bg2,transparent)"><b>سلام '+esc(name)+' 👋</b><div class="meta" style="margin-top:4px">کارهای باز تو: '+toFaDigits(mine.length)+' کار (خودت + «هر دو»)، به ترتیب فوریت.</div></div>' +
+    '<h2>قدم بعدی</h2>' + nextHtml +
+    (rest.length ? '<h2>کارهای امروز تو</h2>' + rest.map(t=>homeTaskCard(t, false)).join('') : '');
+}
+
 // ---------- Dashboard (Home) ----------
 function renderDash(){
   if (!S) return;
   syncPassCard();
+  renderHomeDash();
   const open = S.todos.filter(t=>t.status!=='done');
   const today = jalaliStr(new Date());
   const overdue = open.filter(t=>{ const d = daysUntil(t.deadline); return d !== null && d < 0; });
@@ -1659,34 +1760,34 @@ function renderSuggestions(){
 const CHANNEL_CATS = ['روانشناسی','شاهنامه','شده دیگه','گربه‌ها','همکار','بنیادی'];
 const CHANNEL_SEED = {
   'روانشناسی': [
-    { net:'اینستاگرام', handle:'amirdecodes', url:'https://www.instagram.com/amirdecodes/', status:'فعال' },
-    { net:'یوتیوب', handle:'@AmirDecodes', url:'https://www.youtube.com/@AmirDecodes', status:'فعال' },
-    { net:'آپارات', handle:'amirdecodes', url:'https://www.aparat.com/amirdecodes', status:'فعال' },
-    { net:'تیک‌تاک', handle:'amirho3einmj', url:'https://www.tiktok.com/@amirho3einmj', status:'در حال تغییر برند به amirdecodes' },
+    { net:'اینستاگرام', handle:'titanstation', url:'https://www.instagram.com/titanstation/', status:'فعال · TitanStation' },
+    { net:'یوتیوب', handle:'@Titan.Station', url:'https://www.youtube.com/@Titan.Station', status:'فعال · TitanStation' },
+    { net:'آپارات', handle:'amirdecodes', url:'https://www.aparat.com/amirdecodes', status:'فعال · TitanStation (یوزرنیم تا ~۲۲ دسامبر ۲۰۲۶ قفل است)' },
+    { net:'تیک‌تاک', handle:'Titan_Station', url:'https://www.tiktok.com/@Titan_Station', status:'فعال · TitanStation' },
   ],
   'شاهنامه': [
-    { net:'اینستاگرام', handle:'shahnameh.tales', url:'https://www.instagram.com/shahnameh.tales/', status:'موقت' },
-    { net:'یوتیوب', handle:'@asatireiran', url:'https://www.youtube.com/@asatireiran', status:'موقت' },
-    { net:'آپارات', handle:'u_44295339', url:'https://www.aparat.com/u_44295339', status:'موقت' },
-    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+    { net:'اینستاگرام', handle:'pretimetv', url:'https://www.instagram.com/pretimetv/', status:'فعال · Pre Time' },
+    { net:'یوتیوب', handle:'@pretimetv', url:'https://www.youtube.com/@pretimetv', status:'فعال · PreTime' },
+    { net:'آپارات', handle:'u_44295339', url:'https://www.aparat.com/u_44295339', status:'نیاز به تأیید · pretimetv هنوز تأیید نشده' },
+    { net:'تیک‌تاک', handle:'pretimetv', url:'https://www.tiktok.com/@pretimetv', status:'فعال · PreTime' },
   ],
   'شده دیگه': [
     { net:'اینستاگرام', handle:'shode.dige', url:'https://www.instagram.com/shode.dige/', status:'فعال' },
     { net:'یوتیوب', handle:'@shodedige', url:'https://www.youtube.com/@shodedige', status:'فعال' },
     { net:'آپارات', handle:'u_44289335', url:'https://www.aparat.com/u_44289335', status:'موقت' },
-    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+    { net:'تیک‌تاک', handle:'shodedige', url:'https://www.tiktok.com/@shodedige', status:'فعال' },
   ],
   'گربه‌ها': [
     { net:'اینستاگرام', handle:'fancatstic.four', url:'https://www.instagram.com/fancatstic.four/', status:'فعال' },
     { net:'یوتیوب', handle:'@fancatsticfour', url:'https://www.youtube.com/@fancatsticfour', status:'فعال' },
     { net:'آپارات', handle:'u_44289730', url:'https://www.aparat.com/u_44289730', status:'موقت' },
-    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+    { net:'تیک‌تاک', handle:'fancatsticfour', url:'https://www.tiktok.com/@fancatsticfour', status:'فعال' },
   ],
   'همکار': [
     { net:'اینستاگرام', handle:'hamkargram', url:'https://www.instagram.com/hamkargram/', status:'فعال' },
     { net:'یوتیوب', handle:'@hamkargram', url:'https://www.youtube.com/@hamkargram', status:'فعال' },
     { net:'آپارات', handle:'u_44289977', url:'https://www.aparat.com/u_44289977', status:'موقت' },
-    { net:'تیک‌تاک', handle:'', url:'', status:'ساخته نشده — در انتظار' },
+    { net:'تیک‌تاک', handle:'hamrahseller', url:'https://www.tiktok.com/@hamrahseller', status:'فعال' },
   ],
 };
 function loadChannels(){
@@ -1831,7 +1932,6 @@ async function setPassword(){
     syncPassCard();
   } catch(e){ msg.textContent = 'خطا: ' + e.message; }
 }
-if (PANEL_BUILD !== 'web') { var pc = document.getElementById('passCard'); if (pc) pc.style.display='none'; }
 if (PANEL_BUILD === 'web') {
   syncThemeBtn();
   bootWeb();
