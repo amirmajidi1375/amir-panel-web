@@ -120,6 +120,9 @@
   /* Bottom sheet: one at a time, never stacked. */
   .sheet-backdrop { position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.4); display:flex; align-items:flex-end; justify-content:center; }
   .sheet-box { background:var(--card); color:var(--txt); border-radius:20px 20px 0 0; padding:16px 16px calc(20px + env(safe-area-inset-bottom)); width:100%; max-width:720px; max-height:88vh; overflow-y:auto; box-shadow:0 -8px 30px rgba(0,0,0,.3); }
+  .sheet-topbar { display:flex; justify-content:flex-start; margin-bottom:2px; }
+  .dirty-backdrop { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.5); display:flex; align-items:flex-end; justify-content:center; }
+  .dirty-box { background:var(--card); color:var(--txt); border-radius:20px 20px 0 0; padding:20px 16px calc(24px + env(safe-area-inset-bottom)); width:100%; max-width:720px; box-shadow:0 -8px 30px rgba(0,0,0,.3); }
   .sheet-handle { width:44px; height:5px; border-radius:999px; background:var(--line); margin:0 auto 12px; }
   .step-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
   .step-row input[type="text"] { margin-bottom:0; flex:1; }
@@ -162,6 +165,7 @@
   <div id="bootLoading" class="center" style="padding:20px">در حال بارگذاری…</div>
   <div id="pickerRoot"></div>
   <div id="sheetRoot"></div>
+  <div id="dirtyRoot"></div>
 
   <div id="notg" class="center" style="display:none">
     <p style="font-size:1.2rem;color:var(--txt)">این پنل فقط داخل تلگرام باز می‌شود</p>
@@ -546,14 +550,48 @@ function updateFab(){
   fab.style.display = (currentScreen === 'analytics' || currentScreen === 'channels') ? 'none' : 'block';
 }
 let sheetOpen = false;
-function openSheet(html){
+// Fix13: central dirty tracking. ONE flag for the whole open sheet, set
+// by any unsaved input/change inside it (edit-form fields, step edits,
+// note/guide text, password field), cleared only by a successful save
+// or by a confirmed discard. It is NOT per-field: the dialog below is
+// the single place that decides what happens to unsaved work.
+// sheetKind remembers which sheet is open across re-renders (and across
+// a date-picker detour, which closes the sheet UI but keeps TS): a
+// re-render of the SAME sheet must never reset the flag, while opening
+// a DIFFERENT sheet does. sheetSaveFn is the sheet's own save action
+// for 'ثبت و خروج'; sheetClearFn clears that sheet's in-memory state
+// (TV/TS) when the sheet is really gone — never on a picker detour.
+let sheetDirty = false, sheetKind = null, sheetSaveFn = null, sheetClearFn = null;
+let viewDraft = '', viewGuideCollapsed = false, editGuideCollapsed = false;
+let dirtyPending = null; // {mode:'close'} | {mode:'backToView', id}
+function markDirty(){ sheetDirty = true; }
+function clearDirty(){ sheetDirty = false; viewDraft = ''; }
+function openSheet(html, kind){
   // One history entry per sheet opening; re-rendering the same open
-  // sheet (e.g. after a date pick) must not stack entries.
+  // sheet (e.g. after a date pick) must not stack entries. Dirty state
+  // is deliberately NOT reset here: re-renders of the same sheet and
+  // picker detours (which close the sheet UI but keep TS) must keep
+  // it. Entry points (openTaskView / openMoreSheet / openFilterSheet)
+  // reset it when a genuinely new sheet opens from a closed state.
+  sheetKind = kind || sheetKind;
   if (!sheetOpen) { sheetOpen = true; histPush({panel:'sheet'}); }
-  document.getElementById('sheetRoot').innerHTML = '<div class="sheet-backdrop" onclick="if(event.target===this)closeSheet()"><div class="sheet-box"><div class="sheet-handle"></div>' + html + '</div></div>';
+  // Fix13: every sheet gets the same top-right ✕ (in RTL, flex-start
+  // is the visual right). It behaves exactly like the sheet's own
+  // close button — including the dirty dialog when something changed.
+  document.getElementById('sheetRoot').innerHTML = '<div class="sheet-backdrop" onclick="if(event.target===this)closeSheet()"><div class="sheet-box"><div class="sheet-handle"></div><div class="sheet-topbar"><button class="btn-ghost btn-sm" onclick="closeSheet()" aria-label="بستن برگه">✕</button></div>' + html + '</div></div>';
   updateFab();
 }
+// Fix13: the guarded close. Every close path (✕, بستن button, backdrop
+// tap, device back) goes through here. Clean sheet: close at once, no
+// dialog. Dirty sheet: show the three-choice dialog and close nothing
+// until the user picks.
 function closeSheet(){
+  if (!sheetOpen) return;
+  if (!sheetDirty) { if (sheetClearFn) sheetClearFn(); forceCloseSheet(); return; }
+  dirtyPending = { mode: 'close' };
+  showDirtyDialog();
+}
+function forceCloseSheet(){
   const wasOpen = sheetOpen; sheetOpen = false;
   document.getElementById('sheetRoot').innerHTML = '';
   // A sheet closed by its own button (not by back) leaves its history
@@ -566,21 +604,85 @@ function closeSheet(){
   if (document.getElementById('app').style.display === 'block') updateFab();
   else document.getElementById('fab').style.display = 'none';
 }
+function showDirtyDialog(){
+  const root = document.getElementById('dirtyRoot'); if (!root) return forceCloseSheet();
+  root.innerHTML = '<div class="dirty-backdrop"><div class="dirty-box"><h2 style="margin-top:0">تغییری ثبت نشده</h2>' +
+    '<p class="meta" style="line-height:1.9">چیزی در این برگه عوض شده و هنوز ثبت نشده. با بستنش، آن تغییر پاک می‌شود.</p>' +
+    '<button class="btn-teal" style="width:100%;margin-top:8px" onclick="dirtyConfirmSave()">ثبت و خروج</button>' +
+    '<button class="btn-ghost" style="width:100%;margin-top:8px" onclick="dirtyConfirmDiscard()">خروج بدون ثبت</button>' +
+    '<button class="btn-ghost" style="width:100%;margin-top:8px" onclick="dirtyContinue()">ادامه ویرایش</button></div></div>';
+}
+function hideDirtyDialog(){ const root = document.getElementById('dirtyRoot'); if (root) root.innerHTML = ''; }
+async function dirtyConfirmSave(){
+  hideDirtyDialog();
+  const pending = dirtyPending; dirtyPending = null;
+  if (typeof sheetSaveFn === 'function') {
+    try { await sheetSaveFn(); } catch(e){}
+    // Save actions close the sheet themselves on success (edit save,
+    // view step-result save-and-close). If one left the sheet open
+    // (failed save), stay in the sheet so the user can fix it.
+    if (pending && pending.mode === 'backToView' && !TS) openTaskView(pending.id);
+    return;
+  }
+  if (pending && pending.mode === 'backToView') { TS = null; openTaskView(pending.id); return; }
+  if (sheetClearFn) sheetClearFn();
+  forceCloseSheet();
+}
+function dirtyConfirmDiscard(){
+  hideDirtyDialog();
+  const pending = dirtyPending; dirtyPending = null;
+  clearDirty();
+  if (pending && pending.mode === 'backToView') { TS = null; openTaskView(pending.id); return; }
+  if (sheetClearFn) sheetClearFn();
+  forceCloseSheet();
+}
+function dirtyContinue(){ hideDirtyDialog(); dirtyPending = null; }
+// Fix13: delete from inside a sheet must not go through the dirty
+// dialog (deleting is the action itself, not a close): close the sheet
+// UI directly, then delete by id.
+function closeSheetDelete(id){ TS = null; forceCloseSheet(); deleteTodo(id); }
+// Fix13: back from the EDIT sheet to the VIEW sheet. Clean: restore the
+// view at once. Dirty: the same three-choice dialog — save means save
+// the edit and then show the view, discard means drop the edit and show
+// the view, continue means stay in the edit sheet.
+function backToTaskView(){
+  if (!TS) return;
+  const id = TS.id;
+  if (!sheetDirty) { TS = null; openTaskView(id); return; }
+  dirtyPending = { mode: 'backToView', id: id };
+  sheetSaveFn = async function(){ await saveTaskSheet(); };
+  showDirtyDialog();
+}
+function toggleViewGuide(){
+  viewGuideCollapsed = !viewGuideCollapsed;
+  renderTaskView();
+  if (viewGuideCollapsed) { const box = document.querySelector('.sheet-box'); if (box) box.scrollTop = 0; }
+}
+function toggleEditGuide(){
+  editGuideCollapsed = !editGuideCollapsed;
+  renderTaskSheet();
+  if (editGuideCollapsed) { const box = document.querySelector('.sheet-box'); if (box) box.scrollTop = 0; }
+}
 // Back button: close any picker first, then any sheet, then return to
 // the previous in-app screen. A null state means the bottom of the app
 // stack: overlays close and the next back press exits normally.
 window.addEventListener('popstate', function(ev){
   const st = ev.state;
   closePicker(true);
+  // Fix13: back with unsaved changes shows the dialog instead of
+  // silently discarding. The history entry is re-pushed so that, if the
+  // user chooses to stay, the back stack is where it was.
+  if (sheetOpen && sheetDirty) { try { history.pushState({panel:'sheet'}, ''); } catch(e){} dirtyPending = { mode: 'close' }; showDirtyDialog(); return; }
   closeSheet();
   if (st && st.panel === 'screen' && st.screen) showScreen(st.screen, null, false);
 });
 try { if (history.state == null) histReplace({panel:'screen', screen: currentScreen}); } catch(e){}
 function openMoreSheet(btn){
+  sheetDirty = false; sheetSaveFn = null; sheetClearFn = null;
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   if (btn) btn.classList.add('on');
   openSheet(
-    '<div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin-top:0;margin-bottom:0">بیشتر</h2><button class="btn-ghost btn-sm" onclick="closeSheet()">✕ بستن</button></div>' +
+    '<h2 style="margin-top:0">بیشتر</h2>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'reports\')">📝 گزارش‌ها <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'analytics\')">📈 تحلیل <span>‹</span></button>' +
     '<button class="more-item" onclick="closeSheet();showScreen(\'channels\')">📡 کانال‌ها <span>‹</span></button>' +
@@ -590,13 +692,17 @@ function openMoreSheet(btn){
   );
 }
 function openPassSheet(){
+  // Fix13: password typing is unsaved work; 'ثبت و خروج' saves it and
+  // then closes, but only on a real success (tracked via __passJustSet).
+  sheetSaveFn = async function(){ window.__passJustSet = false; await setPassword(); if (window.__passJustSet) { sheetDirty = false; forceCloseSheet(); } };
+  sheetClearFn = null;
   // Fix3: the only password form in the app now lives here (More sheet).
   // It reuses setPassword() unchanged: same input ids, same account-level
   // panelPassDismissed flag, no Home card that can return.
   openSheet(
-    '<div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin-top:0;margin-bottom:0">تغییر رمز عبور</h2><button class="btn-ghost btn-sm" onclick="closeSheet()">✕ بستن</button></div>' +
+    '<h2 style="margin-top:0">تغییر رمز عبور</h2>' +
     '<p class="meta" style="line-height:1.8">با این رمز، بعداً از صفحهٔ ورود وارد می‌شوی. اگر قبلاً رمز گذاشته‌ای و فقط می‌خواهی آن را عوض کنی، رمز تازه را اینجا بنویس.</p>' +
-    '<div class="pw-wrap" style="margin-bottom:10px"><input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left"><button type="button" class="pw-toggle" aria-label="نمایش رمز" onclick="togglePw(\'newPass\',this)">👁</button></div>' +
+    '<div class="pw-wrap" style="margin-bottom:10px"><input id="newPass" type="password" placeholder="رمز تازه" dir="ltr" style="text-align:left" oninput="markDirty()"><button type="button" class="pw-toggle" aria-label="نمایش رمز" onclick="togglePw(\'newPass\',this)">👁</button></div>' +
     '<button class="btn-teal" style="width:100%" onclick="setPassword()">ذخیرهٔ رمز</button>' +
     '<span id="passMsg" class="meta"></span>'
   );
@@ -684,7 +790,9 @@ function openPicker(hiddenId){
   // If a task sheet is open, close it first (never stack sheets/popups);
   // after picking, the sheet is re-rendered from TS state.
   pickerReturnSheet = !!TS;
-  if (pickerReturnSheet) closeSheet();
+  // Fix13: a picker detour is not a close — TS (with its unsaved edits
+  // and the dirty flag) survives and the sheet re-renders after picking.
+  if (pickerReturnSheet) forceCloseSheet();
   const hidden = document.getElementById(hiddenId);
   const viewId = hiddenId + 'View';
   const cur = parseJalali(hidden.value) || jalaliParts(new Date());
@@ -729,7 +837,7 @@ function renderPicker(){
     cur.setDate(cur.getDate()+1);
   }
   html += '</div><button class="btn-ghost" style="width:100%;margin-top:10px" onclick="closePicker()">بستن</button>';
-  document.getElementById('pickerRoot').innerHTML = '<div class="picker-backdrop" onclick="if(event.target===this)closePicker()"><div class="picker-box">'+html+'</div></div>';
+  document.getElementById('pickerRoot').innerHTML = '<div class="picker-backdrop" onclick="if(event.target===this)closePicker()"><div class="picker-box"><div style="display:flex;justify-content:flex-start;margin-bottom:6px"><button class="btn-ghost btn-sm" onclick="closePicker()" aria-label="بستن تقویم">✕</button></div>'+html+'</div></div>';
 }
 function pickDay(js){
   const st = pickerState;
@@ -1494,6 +1602,7 @@ function setTaskView(v){
   renderTaskChips(); renderTasks();
 }
 function openFilterSheet(){
+  sheetDirty = false; sheetSaveFn = null; sheetClearFn = null;
   const catOpts = '<option value="all">همهٔ دسته‌ها</option>' + S.categories.map(c=>'<option value="'+esc(c)+'"'+(taskFilter.cat===c?' selected':'')+'>'+esc(c)+'</option>').join('');
   openSheet('<h2 style="margin-top:0">فیلتر کارها</h2>' +
     '<p class="meta">دسته</p><select id="fsCat" onchange="taskFilter.cat=this.value;renderTaskChips();renderTasks()">'+catOpts+'</select>' +
@@ -1677,6 +1786,26 @@ function guideNetworkFor(t){
   if (txt.indexOf('اینستاگرام') >= 0) return 'اینستاگرام';
   return 'اینستاگرام';
 }
+// Fix13 STAGED MULTI-PAGE GUIDES. Any guide covering several pages runs
+// one page at a time, in this fixed order, with a hard gate: the user
+// delivers that page only, Muse confirms receipt and arranges that page,
+// and only then does the guide move to the next page. The final step of
+// every staged guide is Muse saying 'همه دریافت شد' and closing the task.
+// Step generation ('ساختن گام‌ها از راهنما' / 'شکستن به گام‌ها') therefore
+// yields one stage-step per page plus a final confirmation step.
+// Fix15 delivery channel: panel upload (fix14 attachments). Delivery is
+// the 📎 section of the task, or the step-note field of the same sheet
+// for text-only results (handle, name, decision, publish link) — never
+// the Admin chat and never the task description. The gate/stage logic
+// is channel-independent; only the delivery phrase was swapped.
+const STAGE_ORDER = ['روانشناسی', 'شاهنامه', 'شده دیگه', 'گربه‌ها', 'همکار'];
+const STAGE_NOTE = 'مرحله‌ای: فقط یک پیج در هر مرحله، به این ترتیب: روانشناسی (TitanStation) → شاهنامه (PreTime) → شده دیگه → گربه‌ها → همکار. تا Muse پیج قبلی را تأیید نکرده، پیج بعدی را شروع نکن.';
+function stageStep(n, pg, where, link, find){
+  return { where: where, link: link, staged: true, action: 'مرحلهٔ ' + n + ' از ۵ — فقط ' + pg.page + ': ' + find + '؛ بعد خروجی‌های این پیج را در بخش 📎 همین کار آپلود کن و صبر کن تا Muse دریافتشان را تأیید و همان پیج را بچیند؛ تا تأیید نشده، سراغ پیج بعدی نرو', expect: null };
+}
+function stageFinalStep(here){
+  return { where: here, link: null, action: 'بعد از تأیید آخرین پیج، Muse می‌گوید «همه دریافت شد»؛ آن‌وقت کار را تمام‌شده بزن', expect: null };
+}
 function tailoredGuideFor(t){
   const title = t.title || 'این کار';
   const detail = t.detail || '';
@@ -1688,66 +1817,68 @@ function tailoredGuideFor(t){
   if (has('یکپارچه‌سازی', 'یکپارچه سازی') || /قدم\s*(صفر|یک|دو|سه|چهار|۰|۱|۲|۳|۴)/.test(text)) {
     return { goal: 'تصمیم دربارهٔ این کار: ' + title + ' — تا تصمیم نگیری، این کار قدم اجرایی ندارد.', note: null, steps: [
       { where: here, link: null, action: 'جملهٔ «در انتظار تصمیم تو» را بخوان و بفهم این کار دقیقاً منتظر چه تصمیمی است', expect: null },
-      { where: here, link: null, action: 'تصمیمت را در توضیح همین کار بنویس: بله یا نه، با دلیل یک‌خطی', expect: null },
+      { where: here, link: null, action: 'تصمیمت را در کادر یادداشت قدم همین برگه بنویس: بله یا نه، با دلیل یک‌خطی', expect: null },
       { where: here, link: null, action: 'بعد از نوشتن تصمیم، وضعیت کار را به مرحلهٔ بعد ببر', expect: null },
-    ]};
+    ], museNext: 'میوز تصمیم ثبت‌شده را می‌خواند و قدم بعدی کار را بر همان اساس می‌چیند.'};
   }
   if (has('لوگوگرافیک', 'تایپوگرافی')) {
-    return { goal: 'پیدا کردن مدل‌های لوگو: ' + title, note: null, steps: [
-      { where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'سرچ کن: «minimal logotype design» و مدل‌های تایپوگرافی هم‌سبک را ذخیره کن', expect: null },
-      { where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'سرچ کن: «modern logo mark vector» و مدل‌های گرافیکی هم‌سبک را ذخیره کن', expect: null },
-      { where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'سرچ کن: «persian typography logo» و مدل‌های دارای خط فارسی را ذخیره کن', expect: null },
-      { where: here, link: null, action: '۵ مدل لوگوگرافیک و ۵ مدل تایپوگرافی را در دو فهرست جدا در توضیح کار بنویس', expect: '۵ مدل گرافیک + ۵ مدل تایپوگرافی' },
-      { where: here, link: null, action: 'هر مدل را با سبک وکتورهای نگین مقایسه کن و نتیجهٔ مقایسه را در یک خط بنویس', expect: null },
-    ]};
+    // Fix13 staged: one page at a time (find + deliver + Muse confirms),
+    // never all pages at once; the old 'write two lists in the task
+    // description' delivery step is gone (see fix12 delivery wording).
+    return { goal: 'پیدا کردن مدل‌های لوگو: ' + title, note: STAGE_NOTE, staged: true, steps:
+      STAGE_ORDER.map((cat, i) => stageStep(i + 1, PAGE_SEARCH_PHRASES[cat], 'پینترست', NETWORK_LINKS['پینترست'],
+        'سرچ کن: «minimal logotype design»، «modern logo mark vector»، «persian typography logo» و ۵ مدل گرافیک + ۵ مدل تایپوگرافی هم‌سبک را ذخیره کن'))
+      .concat([stageFinalStep(here)]) , museNext: 'میوز مدل‌های آپلودشدهٔ هر پیج را با وکتورهای نگین کنار هم می‌چیند و برای هر پیج، ترکیب «این وکتور + این استایل» را پیشنهاد می‌دهد؛ تو فقط مدل‌ها را پیدا و آپلود می‌کنی، چیدمان با میوز است.' };
   }
   if (has('ترکیبی', 'انتخاب ترکیبی')) {
-    return { goal: 'انتخاب ترکیبی لوگو: ' + title, note: null, steps: [
-      { where: 'برگهٔ کار وکتورها در همین پنل', link: null, action: 'وکتورهای انتخاب‌شدهٔ نگین را باز کن و برای هر پیج، وکتور نهایی را یادداشت کن', expect: null },
-      { where: 'برگهٔ کار مدل‌های لوگو در همین پنل', link: null, action: 'مدل‌های گرافیک و تایپوگرافی امیر را باز کن و برای هر پیج، استایل نهایی را یادداشت کن', expect: null },
-      { where: here, link: null, action: 'برای هر ۵ پیج، یک ترکیب «این وکتور + این استایل» را در توضیح کار بنویس', expect: 'یک ترکیب (وکتور + استایل) برای هر ۵ پیج' },
-      { where: here, link: null, action: 'ترکیب‌ها را با نگین نهایی کن و کار را تمام‌شده بزن', expect: null },
-    ]};
+    // Fix13 staged: one combination per page, confirmed by Muse, in order.
+    return { goal: 'انتخاب ترکیبی لوگو: ' + title, note: STAGE_NOTE, staged: true, steps:
+      STAGE_ORDER.map((cat, i) => ({ where: here, link: null, staged: true, action: 'مرحلهٔ ' + (i + 1) + ' از ۵ — فقط ' + PAGE_SEARCH_PHRASES[cat].page + ': وکتور نهایی نگین و استایل نهایی امیر را کنار هم بگذار، ترکیب «این وکتور + این استایل» را در کادر یادداشت قدم همین برگه بنویس و تأیید Muse را بگیر؛ تا تأیید نشده، سراغ پیج بعدی نرو', expect: null }))
+      .concat([stageFinalStep(here)]) , museNext: 'میوز ترکیب‌های نهایی را در برگهٔ برند هر پیج ثبت می‌کند تا ساخت لوگو با همان ترکیب‌ها انجام شود.' };
   }
   if (has('وکتور', 'لوگو')) {
     const pageName = page ? page.page : 'پیجی که در عنوان یا دستهٔ کار آمده';
     const multi = text.indexOf('هر پیج') >= 0 || text.indexOf('هر ۵') >= 0 || text.indexOf('هر پنج') >= 0;
     let steps;
     if (multi) {
-      steps = Object.values(PAGE_SEARCH_PHRASES).map(pg => ({ where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'برای ' + pg.page + ' سرچ کن: «' + pg.phrases.join('» ، «') + '» و موارد هم‌سبک را ذخیره کن', expect: null }));
-      steps.push({ where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'از ذخیره‌شده‌ها، برای هر پیج ۱۰ وکتور با یک سبک انتخاب کن: ضخامت خط یکی، تک‌رنگ، در سایز آواتار خوانا', expect: '۱۰ وکتور برای هر ۵ پیج' });
-    } else {
-      const phrases = page ? page.phrases : ['minimal line icon vector'];
-      steps = phrases.map(p => ({ where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'سرچ کن: «' + p + '» و موارد هم‌سبک را ذخیره کن', expect: null }));
-      steps.push({ where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'از ذخیره‌شده‌ها، ۱۰ وکتور با یک سبک انتخاب کن: ضخامت خط یکی، تک‌رنگ، در سایز آواتار خوانا', expect: '۱۰ وکتور برای ' + pageName });
+      // Fix13 staged: one page at a time (find + deliver + Muse confirms).
+      steps = STAGE_ORDER.map((cat, i) => stageStep(i + 1, PAGE_SEARCH_PHRASES[cat], 'پینترست', NETWORK_LINKS['پینترست'],
+        'سرچ کن: «' + PAGE_SEARCH_PHRASES[cat].phrases.join('» ، «') + '» و از ذخیره‌شده‌ها، ۱۰ وکتور با یک سبک انتخاب کن: ضخامت خط یکی، تک‌رنگ، در سایز آواتار خوانا'));
+      steps.push({ where: 'فری‌پیک', link: NETWORK_LINKS['فری‌پیک'], action: 'همان عبارت‌ها را سرچ کن و مجوز هر فایل را ببین؛ فایل رایگان معمولاً ذکر منبع می‌خواهد', expect: null });
+      steps.push(stageFinalStep(here));
+      return { goal: 'انتخاب وکتور/لوگو برای هر ۵ پیج: ' + title, note: STAGE_NOTE, staged: true, steps: steps, museNext: 'میوز وکتورهای آپلودشده را با مدل‌های طرف دیگر کنار هم می‌چیند و برای هر پیج، ترکیب «این وکتور + این استایل» را پیشنهاد می‌دهد؛ تو فقط وکتورها را پیدا و آپلود می‌کنی، چیدمان با میوز است.' };
     }
+    const phrases = page ? page.phrases : ['minimal line icon vector'];
+    steps = phrases.map(p => ({ where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'سرچ کن: «' + p + '» و موارد هم‌سبک را ذخیره کن', expect: null }));
+    steps.push({ where: 'پینترست', link: NETWORK_LINKS['پینترست'], action: 'از ذخیره‌شده‌ها، ۱۰ وکتور با یک سبک انتخاب کن: ضخامت خط یکی، تک‌رنگ، در سایز آواتار خوانا', expect: '۱۰ وکتور برای ' + pageName });
     steps.push({ where: 'فری‌پیک', link: NETWORK_LINKS['فری‌پیک'], action: 'همان عبارت‌ها را سرچ کن و مجوز هر فایل را ببین؛ فایل رایگان معمولاً ذکر منبع می‌خواهد', expect: null });
     steps.push({ where: here, link: null, action: 'وکتور دانلودی را همان‌طور لوگوی نهایی نکن؛ برای بازطراحی و شخصی‌سازی به مرحلهٔ ترکیب برو', expect: 'خروجی نهایی وکتورهای هم‌سبک است، نه یک فایل دانلودیِ بدون تغییر' });
-    steps.push({ where: here, link: null, action: 'کار را با همین وکتورها به مرحلهٔ بعد ببر', expect: 'کار #' + (t.id || '') });
-    return { goal: (multi ? 'انتخاب وکتور/لوگو برای هر ۵ پیج: ' : 'انتخاب وکتور/لوگو برای ' + pageName + ': ') + title, note: (multi || page) ? null : 'نام پیج از روی عنوان یا دستهٔ این کار مشخص نشد؛ اول نام پیج را در توضیح کار بنویس، بعد عبارت‌های بالا را با همان نام پیج بسنج.', steps: steps };
+    steps.push({ where: 'بخش 📎 همین کار', link: null, noShot: true, action: 'وکتورهای انتخاب‌شده را در بخش 📎 همین کار آپلود کن', expect: '۱۰ وکتور برای ' + pageName });
+    return { goal: 'انتخاب وکتور/لوگو برای ' + pageName + ': ' + title, note: page ? null : 'نام پیج از روی عنوان یا دستهٔ این کار مشخص نشد؛ اول نام پیج را در کادر یادداشت قدم همین برگه بنویس، بعد عبارت‌های بالا را با همان نام پیج بسنج.', steps: steps, museNext: 'میوز وکتورهای آپلودشده را با مدل‌های طرف دیگر کنار هم می‌چیند و برای هر پیج، ترکیب «این وکتور + این استایل» را پیشنهاد می‌دهد؛ تو فقط وکتورها را پیدا و آپلود می‌کنی، چیدمان با میوز است.' };
   }
   if (has('آپارات') && has('هندل')) {
-    const orderStep = (detail.indexOf('pretimetv') >= 0 && detail.indexOf('pretime') >= 0) ? 'برای شاهنامه به همین ترتیب امتحان کن: pretimetv، بعد pretime، بعد pre.time' : 'برای هر پیج، اول هندل هم‌نام شبکه‌های دیگر همان پیج را امتحان کن';
-    return { goal: 'هندل‌های آپارات: ' + title, note: null, steps: [
-      { where: 'آپارات', link: NETWORK_LINKS['آپارات'], action: 'وارد حساب آپارات شو و بخش تغییر نام کاربری را باز کن', expect: null },
-      { where: 'آپارات', link: NETWORK_LINKS['آپارات'], action: orderStep, expect: null },
-      { where: 'آپارات', link: NETWORK_LINKS['آپارات'], action: 'برای بقیهٔ پیج‌ها هم هندل هم‌نام شبکه‌های دیگر را امتحان کن و نتیجهٔ هر کدام را یادداشت کن', expect: null },
-      { where: here, link: null, action: 'نتیجهٔ هر پیج (هندل نهایی یا موقتی) را در توضیح کار بنویس', expect: 'هندل آپارات هر ۵ پیج' },
-      { where: here, link: null, action: 'اگر هندلی به تأیید شماره نیاز داشت، همان را در توضیح بنویس و کار را به مرحلهٔ بعد ببر', expect: null },
-    ]};
+    // Fix13 staged: one page's handle at a time, confirmed by Muse, in order.
+    const steps37 = [{ where: 'آپارات', link: NETWORK_LINKS['آپارات'], action: 'وارد حساب آپارات شو و بخش تغییر نام کاربری را باز کن', expect: null }];
+    STAGE_ORDER.forEach((cat, i) => {
+      const tryText = cat === 'شاهنامه' ? 'به همین ترتیب امتحان کن: pretimetv، بعد pretime، بعد pre.time' : 'هندل هم‌نام شبکه‌های دیگر همان پیج را امتحان کن';
+      steps37.push({ where: 'آپارات', link: NETWORK_LINKS['آپارات'], staged: true, action: 'مرحلهٔ ' + (i + 1) + ' از ۵ — فقط ' + PAGE_SEARCH_PHRASES[cat].page + ': ' + tryText + ' و نتیجه را در کادر یادداشت قدم همین برگه بنویس و تأیید Muse را بگیر؛ تا تأیید نشده، سراغ پیج بعدی نرو', expect: null });
+    });
+    steps37.push({ where: here, link: null, action: 'اگر هندلی به تأیید شماره نیاز داشت، همان را در کادر یادداشت قدم همین برگه بنویس', expect: null });
+    steps37.push(stageFinalStep(here));
+    return { goal: 'هندل‌های آپارات: ' + title, note: STAGE_NOTE, staged: true, steps: steps37, museNext: 'میوز هندل‌های نهایی را در کانال‌های پنل ثبت می‌کند.' };
   }
   if (has('نامگذاری', 'نام پیج', 'نام صفحه', 'هندل', 'آیدی پیج')) {
     const multiName = text.indexOf('هر پیج') >= 0 || text.indexOf('هر ۵') >= 0 || text.indexOf('هر پنج') >= 0;
     const pageName = multiName ? 'هر ۵ پیج' : (page ? page.page : 'این پیج');
     const steps = [
-      { where: here, link: null, action: '۱۰ نامزد بنویس و هر کدام را در یک خط جدا بنویس', expect: null },
-      { where: 'اینستاگرام', link: NETWORK_LINKS['اینستاگرام'], action: 'نامزد اول را در قسمت ثبت/جستجو بنویس و ببین آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در توضیح کار: ' + handle : null },
-      { where: 'یوتیوب', link: NETWORK_LINKS['یوتیوب'], action: 'همان نامزد را بررسی کن که آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در توضیح کار: ' + handle : null },
-      { where: 'آپارات', link: NETWORK_LINKS['آپارات'], action: 'همان نامزد را بررسی کن که آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در توضیح کار: ' + handle : null },
-      { where: 'تیک‌تاک', link: NETWORK_LINKS['تیک‌تاک'], action: 'همان نامزد را بررسی کن که آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در توضیح کار: ' + handle : null },
-      { where: here, link: null, action: 'نامی را که در هر ۴ شبکه آزاد بود، به‌عنوان نام نهایی در توضیح کار بنویس و کار را تمام‌شده بزن', expect: 'نام نهایی برای ' + pageName },
+      { where: here, link: null, action: '۱۰ نامزد را در کادر یادداشت قدم همین برگه بنویس، هر کدام در یک خط جدا', expect: null },
+      { where: 'اینستاگرام', link: NETWORK_LINKS['اینستاگرام'], action: 'نامزد اول را در قسمت ثبت/جستجو بنویس و ببین آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در همین کار: ' + handle : null },
+      { where: 'یوتیوب', link: NETWORK_LINKS['یوتیوب'], action: 'همان نامزد را بررسی کن که آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در همین کار: ' + handle : null },
+      { where: 'آپارات', link: NETWORK_LINKS['آپارات'], action: 'همان نامزد را بررسی کن که آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در همین کار: ' + handle : null },
+      { where: 'تیک‌تاک', link: NETWORK_LINKS['تیک‌تاک'], action: 'همان نامزد را بررسی کن که آزاد است یا گرفته', expect: handle ? 'هندل موردنظر در همین کار: ' + handle : null },
+      { where: here, link: null, action: 'نامی را که در هر ۴ شبکه آزاد بود، به‌عنوان نام نهایی در کادر یادداشت قدم همین برگه بنویس و کار را تمام‌شده بزن', expect: 'نام نهایی برای ' + pageName },
     ];
-    return { goal: 'انتخاب نام/هندل برای ' + pageName + ': ' + title, note: null, steps: steps };
+    return { goal: 'انتخاب نام/هندل برای ' + pageName + ': ' + title, note: null, steps: steps, museNext: 'میوز نام نهایی را در کانال‌های پنل ثبت می‌کند.' };
   }
   if (has('تیک‌تاک', 'tiktok', 'ریل', 'reel', 'ویدیو', 'video', 'کلیپ', 'فیلم', 'انتشار', 'منتشر')) {
     const net = guideNetworkFor(t);
@@ -1756,18 +1887,18 @@ function tailoredGuideFor(t){
       { where: here, link: null, action: 'پیام اصلی را در یک جمله بنویس: این ویدیو دقیقاً چه چیزی را می‌خواهد بگوید', expect: null },
       { where: 'گوشی خودت', link: null, action: 'یک برداشت آزمایشی بگیر و ۳ ثانیهٔ اول را ببین که پیام می‌رسد یا نه؛ اگر نرسید، جملهٔ اصلی را کوتاه‌تر کن', expect: null },
       { where: net, link: NETWORK_LINKS[net], action: 'نسخهٔ نهایی را بارگذاری و منتشر کن', expect: 'صفحهٔ ' + pageName + ' در ' + net },
-      { where: here, link: null, action: 'لینک پست منتشرشده را در توضیح کار بنویس و کار را تمام‌شده بزن', expect: null },
-    ]};
+      { where: here, link: null, action: 'لینک پست منتشرشده را در کادر یادداشت قدم همین برگه بنویس و کار را تمام‌شده بزن', expect: null },
+    ], museNext: 'میوز لینک انتشار را در خط لولهٔ همان پیج ثبت می‌کند.' };
   }
   const firstLine = detail.split('\n').filter(x=>x.trim())[0] || '';
   const urlMatch = detail.match(/https?:\/\/[^\s]+/);
   const steps = [
-    { where: here, link: null, action: 'توضیح کار را کامل بخوان و نتیجهٔ موردنظر را در یک جمله در توضیح کار بنویس', expect: 'کار #' + (t.id || '') },
+    { where: here, link: null, action: 'توضیح کار را کامل بخوان تا بفهمی نتیجهٔ موردنظر چیست', expect: 'کار #' + (t.id || '') },
   ];
   if (urlMatch) steps.push({ where: 'لینک داخل توضیح کار', link: urlMatch[0], action: 'صفحه را باز کن و قدم بعدیِ همان صفحه را انجام بده', expect: null });
-  else if (firstLine) steps.push({ where: here, link: null, action: 'این قدمِ توضیح کار را انجام بده: «' + firstLine.slice(0, 80) + '»', expect: null });
-  steps.push({ where: here, link: null, action: 'نتیجه را در توضیح کار بنویس و کار را تمام‌شده بزن', expect: null });
-  return { goal: title, note: urlMatch || firstLine ? null : 'این کار بخش قابل سرچی ندارد؛ قدم‌های بالا همان انجامِ مستقیمِ کار است.', steps: steps };
+  else if (firstLine) steps.push({ where: here, link: null, action: 'این قدم را از روی توضیح کار انجام بده: «' + firstLine.slice(0, 80) + '»', expect: null });
+  steps.push({ where: here, link: null, action: 'نتیجه را در کادر یادداشت قدم همین برگه بنویس و کار را تمام‌شده بزن', expect: null });
+  return { goal: title, note: urlMatch || firstLine ? null : 'این کار بخش قابل سرچی ندارد؛ قدم‌های بالا همان انجامِ مستقیمِ کار است.', steps: steps, museNext: 'میوز نتیجهٔ ثبت‌شده را در همین کار ثبت می‌کند.' };
 }
 // Fix10: one plain-language sentence first for technical/jargon tasks.
 // #14 ('پیوند توضیح کار به شناسه کار') has a known plain meaning from
@@ -1784,8 +1915,95 @@ function guidePlain(t){
     return 'معنی این کار از توضیحش مشخص نیست؛ توضیح را در صفحهٔ کار ببین';
   return null;
 }
+
+// Fix15 proposals rule: a guide must not be search instructions only.
+// Every tailored guide carries Muse's own tangible proposals, shown the
+// way a human picks: in frames, with Persian names and reasons, never
+// as bare codes. HEX codes and font names appear only as small
+// execution footnotes under the visible proposal, never as the proposal
+// itself. Where the user's pick is not known yet, the block shows
+// Muse's best default proposals with reasons, and the user picks from
+// them.
+function museProposalsHtml(t){
+  const txt = ((t.title || '') + ' ' + (t.category || '') + ' ' + (t.detail || '')).toLowerCase();
+  const has = (...ws) => ws.some(w => txt.indexOf(w) >= 0);
+  const pg = (typeof guidePageFor === 'function') ? guidePageFor(t) : null;
+  const pgName = pg ? pg.page : 'این پیج';
+  const blocks = [];
+  const head = '<div style="margin-top:12px;padding:12px;border:1px dashed #2dd4bf;border-radius:12px"><div style="line-height:1.9;margin-bottom:8px"><b>💡 پیشنهادهای میوز</b> — این‌ها پیشنهاد آماده‌اند، نه دستور؛ از بینشان انتخاب کن، یا بگو کدام حس را می‌خواهی تا همان را کامل کنم. برای ' + esc(pgName) + ':</div>';
+  const foot = '</div>';
+  if (has('لوگو', 'وکتور', 'ترکیبی', 'نشان')) {
+    // Fix15, per-page rule (2026-10-30 15:11): proposals are shown for
+    // THIS page only, one page at a time — never all five at once.
+    // Multi-page tasks show the first page (TitanStation) and say the
+    // next page's proposal follows after confirmation.
+    const logoFrames = {
+      'روانشناسی': ['#1a1a2e', '#2dd4bf', '#f59e0b', '🧠', 'TitanStation', 'وکتور خطی مغز + مونوگرام نئونی — چرا: مغز پیام روانشناسی را در یک نگاه می‌رساند و نئون در فید تاریک دیده می‌شود.'],
+      'شاهنامه': ['#36000b', '#d4af37', '#d4af37', '🦅', 'PreTime', 'وکتور سیمرغ + مینیاتور طلایی روی عنابی — چرا: سیمرغ ریشهٔ شاهنامه است و طلایی حس باشکوه می‌دهد.'],
+      'شده دیگه': ['#fff7ed', '#c2410c', '#f97316', '😄', 'شده دیگه', 'چهرهٔ دودل ساده + خط شوخ — چرا: سادگی‌اش با طنز روزمره می‌خواند و در سایز کوچک خواناست.'],
+      'گربه‌ها': ['#fdf2f8', '#be185d', '#f472b6', '🐾', 'گربه‌ها', 'وکتور خطی گربه + پنجه — چرا: پنجه امضای ثابت پیج می‌شود و در همهٔ قالب‌ها تکرار می‌شود.'],
+      'همکار': ['#0f766e', '#fde68a', '#fde68a', '🏪', 'همکار', 'ویترین خطی + آدمک دو نفره — چرا: فروش و همراهی را با هم می‌گوید.']
+    };
+    let logoKey = 'روانشناسی';
+    if (txt.indexOf('شاهنامه') >= 0 || txt.indexOf('pretime') >= 0 || txt.indexOf('اساطیر') >= 0) logoKey = 'شاهنامه';
+    else if (txt.indexOf('شده دیگه') >= 0 || txt.indexOf('shodedige') >= 0) logoKey = 'شده دیگه';
+    else if (txt.indexOf('گربه') >= 0 || txt.indexOf('fancatstic') >= 0) logoKey = 'گربه‌ها';
+    else if (txt.indexOf('همکار') >= 0 || txt.indexOf('hamkar') >= 0) logoKey = 'همکار';
+    const lf = logoFrames[logoKey];
+    const logoNote = pg ? '' : ' اول همین پیج است؛ بعد از تأیید، پیشنهاد پیج بعدی می‌آید.';
+    blocks.push('<div style="line-height:1.9"><b>ترکیب آمادهٔ لوگو — در قاب پروفایل و کاور ببینش:</b></div>' +
+      '<div style="border-radius:12px;overflow:hidden;border:1px solid #ddd;margin-top:6px"><div style="background:' + lf[0] + ';color:' + lf[1] + ';padding:12px;text-align:center"><div style="width:52px;height:52px;border-radius:50%;border:2px solid ' + lf[2] + ';margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:24px">' + lf[3] + '</div><b>' + lf[4] + '</b><div style="font-size:12px;opacity:.85;margin-top:4px">کاور همین ترکیب — همان رنگ، همان حس</div></div><div style="padding:10px;font-size:13px;line-height:1.9">' + lf[5] + logoNote + '</div></div>' +
+      '<div class="meta">پانویس اجرا: سرمه‌ای #1a1a2e، فیروزه‌ای #2dd4bf، نارنجی #f59e0b، عنابی #36000B، طلایی #d4af37.</div>');
+  }
+  if (has('رنگ', 'تم رنگی', 'پالت')) {
+    blocks.push('<div style="line-height:1.9"><b>طیف پیشنهادی میوز — با چشم انتخاب کن:</b></div>' +
+      '<div style="height:34px;border-radius:99px;background:linear-gradient(90deg,#d9f99d,#86efac,#22c55e,#10b981,#059669,#064e3b)"></div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:#5a6b60;margin-top:4px"><span>لیموئی</span><span>نعنایی</span><span>چمنی</span><span>زمردی</span><span>جنگلی</span></div>' +
+      '<div style="line-height:1.9;margin-top:6px">ترکیب پیشنهادی: ۶۰٪ فضای روشن برای نفس کشیدن طرح، ۳۰٪ زمردی برای تیتر و قاب، ۱۰٪ جنگلی برای دکمه و شمارهٔ قسمت — چرا: چشم اول زمردی را می‌بیند، بعد آرام سراغ جزئیات می‌رود.</div>' +
+      '<div style="height:12px;border-radius:99px;overflow:hidden;display:flex;margin-top:6px"><div style="flex:6;background:#f5f5dc;border:1px solid #ddd"></div><div style="flex:3;background:#10b981"></div><div style="flex:1;background:#064e3b"></div></div>' +
+      '<div class="meta">پانویس اجرا: زمردی #10B981، جنگلی #064E3B، لیمویی #D9F99D، نعنایی #86EFAC. وقتی رنگ اصلی پیج را بگویی، میوز طیف همان رنگ را با همین شکل می‌سازد.</div>');
+  }
+  if (has('فونت')) {
+    // Page's own content scene as the sample line (per-page rule):
+    // Shode Dige guests-before-mom, TitanStation mind game, PreTime Simurgh.
+    let sampleLine = 'ذهنت داره باهات بازی می‌کنه';
+    if (txt.indexOf('شده دیگه') >= 0 || txt.indexOf('shodedige') >= 0) sampleLine = 'مهمون‌ها قبل از مامان رسیدن!';
+    else if (txt.indexOf('شاهنامه') >= 0 || txt.indexOf('pretime') >= 0 || txt.indexOf('اساطیر') >= 0) sampleLine = 'سیمرغ بال‌هایش را گشود';
+    else if (txt.indexOf('گربه') >= 0 || txt.indexOf('fancatstic') >= 0) sampleLine = 'گربه‌ها، سلطان‌های خونه‌ان';
+    else if (txt.indexOf('همکار') >= 0 || txt.indexOf('hamkar') >= 0) sampleLine = 'همراهتیم، از انتخاب تا تحویل';
+    blocks.push('<div style="line-height:1.9"><b>فونت‌ها — روی یک جمله از محتوای همین پیج مقایسه‌شان کن:</b></div>' +
+      '<div style="padding:8px;border:1px solid #eee;border-radius:10px;margin-top:6px"><div style="font-family:Tahoma,sans-serif;font-weight:bold;font-size:17px">' + esc(sampleLine) + '</div><div class="meta">تیتر ضخیم و خوانا — روی موبایل از همه بهتر خوانده می‌شود.</div></div>' +
+      '<div style="padding:8px;border:1px solid #eee;border-radius:10px;margin-top:6px"><div style="font-family:Georgia,serif;font-weight:bold;font-size:17px">' + esc(sampleLine) + '</div><div class="meta">تیتر باشکوه و کلاسیک — حس ریشه‌دار، مناسب شاهنامه.</div></div>' +
+      '<div style="padding:8px;border:1px solid #eee;border-radius:10px;margin-top:6px"><div style="font-family:Tahoma,sans-serif;font-size:16px">' + esc(sampleLine) + '</div><div class="meta">متن نرم و صمیمی — برای کپشن و استوری، نه تیتر.</div></div>' +
+      '<div class="meta">پانویس اجرا: در کانوا فعلاً Intercom Arabic به‌جای وزیرمتن استفاده شده؛ انتخاب نهایی فونت با همین مقایسه قفل می‌شود.</div>');
+  }
+  if (has('لحن', 'اسلوگان', 'صدای برند', 'صدا')) {
+    blocks.push('<div style="line-height:1.9"><b>لحن و اسلوگان — جمله‌های آماده:</b></div>' +
+      '<div style="line-height:1.9">✅ بگو: «ذهنت داره باهات بازی می‌کنه» — چرا: صمیمی است، با «تو» حرف می‌زند و کنجکاوی می‌سازد.<br>✅ بگو: «شده دیگه، همین‌قدر ساده!» — چرا: در ذهن می‌ماند و لحن شوخ پیج را می‌گوید.<br>⛔ نگو: اصطلاح آکادمیک سنگین بدون توضیح — چرا: مخاطب کوتاه‌خوان را در همان جملهٔ اول از دست می‌دهد.</div>');
+  }
+  if (has('قالب', 'کاروسل', 'کاور', 'استوری', 'پست')) {
+    blocks.push('<div style="line-height:1.9"><b>قالب آماده — پست و استوری را با هم ببین:</b></div>' +
+      '<div style="display:flex;gap:8px;margin-top:6px"><div style="flex:1;border-radius:12px;overflow:hidden;border:1px solid #ddd"><div style="background:#1a1a2e;color:#fff;padding:14px;text-align:center"><div style="font-weight:bold">ذهنت داره باهات بازی می‌کنه</div><div style="color:#2dd4bf;font-size:12px;margin-top:6px">● لوگو این‌جاست · قسمت ۳</div></div><div style="padding:8px;font-size:12px;line-height:1.8">پست: تیتر وسط، لوگو پایین، شمارهٔ قسمت همیشه یک جا.</div></div>' +
+      '<div style="flex:1;border-radius:12px;overflow:hidden;border:1px solid #ddd"><div style="background:linear-gradient(180deg,#2dd4bf,#1a1a2e);color:#fff;padding:14px;text-align:center;height:96px;display:flex;align-items:center;justify-content:center"><b>استوری</b></div><div style="padding:8px;font-size:12px;line-height:1.8">استوری: همان رنگ و فونت، فضای خالی بیشتر برای خوانایی سریع.</div></div></div>');
+  }
+  if (has('بیو', 'واژه', 'هشتگ', 'معرفی')) {
+    blocks.push('<div style="line-height:1.9"><b>بیو و واژه‌ها — گزینه‌های آماده با دلیل:</b></div>' +
+      '<div style="line-height:1.9">۱) «ذهنت رو رمزگشایی می‌کنیم 🔓» — چرا: کوتاه است و وعدهٔ پیج را در یک جمله می‌گوید.<br>۲) «خطاهای ذهنت را بشناس، بهتر تصمیم بگیر» — چرا: فایدهٔ مستقیم را می‌گوید، برای مخاطب عمل‌گرا بهتر است.<br>هشتگ‌های ثابت پیشنهادی: #رمزگشایی_ذهن #خطای_ذهنی — چرا: هر دو دقیقاً موضوع پیج‌اند، نه عمومی و گم‌شونده.</div>');
+  }
+  if (!blocks.length) {
+    blocks.push('<div style="line-height:1.9"><b>پیشنهاد پیش‌فرض میوز:</b> از همین کار، سه گزینهٔ آماده می‌سازم — گزینهٔ امن (نزدیک به چیزی که تا حالا داشتی)، گزینهٔ جسورانه (دیده‌شونده‌تر در فید)، و گزینهٔ میانه — هر کدام با یک دلیل کوتاه که چرا به درد این پیج می‌خورد. تو فقط بگو کدام حس را می‌خواهی، بقیه‌اش با من است.</div>');
+  }
+  return head + blocks.join('') + foot;
+}
 function tailoredGuideHtml(t){
   const g = tailoredGuideFor(t);
+  // Fix13: any other multi-page guide (not already staged above) still
+  // gets the gate note, so no guide ever tells the user to do all five
+  // pages at once.
+  if (!g.staged) {
+    const txt2 = ((t.title || '') + ' ' + (t.detail || '')).toLowerCase();
+    if (txt2.indexOf('هر پیج') >= 0 || txt2.indexOf('هر ۵') >= 0 || txt2.indexOf('هر پنج') >= 0) g.note = (g.note ? g.note + ' ' : '') + STAGE_NOTE;
+  }
   const plain = guidePlain(t);
   let html = '<div class="method-card">' + (plain ? '<div style="line-height:1.9;margin-bottom:6px">💡 ' + esc(plain) + '</div>' : '') + '<div style="line-height:1.8"><b>هدف:</b> ' + esc(g.goal) + '</div>';
   if (g.note) html += '<div class="meta" style="margin-top:4px">' + esc(g.note) + '</div>';
@@ -1800,9 +2018,9 @@ function tailoredGuideHtml(t){
     const inPanel = /پنل/.test(s.where);
     let tail = '';
     if (inPanel) tail = ' → باید ببینی در همین برگه ثبت شد';
-    else if (!shotUsed) { tail = ' → <b>اسکرین بگیر</b>'; shotUsed = true; }
+    else if (!shotUsed && !s.staged && !s.noShot) { tail = ' → <b>اسکرین بگیر</b>'; shotUsed = true; }
     return '<li style="margin-top:6px">' + where + ' → ' + esc(s.action) + tail + (s.expect ? '<div class="meta">باید دقیقاً این باشد: ' + esc(s.expect) + '</div>' : '') + '</li>';
-  }).join('') + '</ol>' + (shotUsed ? '<div class="meta" style="margin-top:6px">اسکرین فقط برای همان یک قدم بیرون از پنل است؛ قدم‌های داخل پنل را از روی همان برگه چک کن، اسکرین لازم ندارد.</div>' : '') + '</div>';
+  }).join('') + '</ol>' + (g.museNext ? '<div class="meta" style="margin-top:6px;line-height:1.9">🤖 بعدش میوز چه می‌کند: ' + esc(g.museNext) + '</div>' : '') + museProposalsHtml(t) + (shotUsed ? '<div class="meta" style="margin-top:6px">اسکرین فقط برای همان یک قدم بیرون از پنل است؛ قدم‌های داخل پنل را از روی همان برگه چک کن، اسکرین لازم ندارد.</div>' : '') + '</div>';
   return html;
 }
 
@@ -1812,6 +2030,9 @@ function tailoredGuideHtml(t){
 // sites that used to open the edit form now open this view instead.
 function openTaskView(id){
   const t = S.todos.find(x=>x.id===id); if (!t) return;
+  // Fix13: a genuinely new view sheet (opened from a card, not a
+  // re-render) starts clean; re-renders keep the draft and dirty flag.
+  if (!sheetOpen) { sheetDirty = false; sheetSaveFn = null; sheetClearFn = null; viewDraft = ''; viewGuideCollapsed = false; editGuideCollapsed = false; }
   TV = { id: t.id };
   renderTaskView();
 }
@@ -1827,23 +2048,139 @@ async function startTaskView(id, btn){
   try { await call('updateTodo', { id: id, status: next }); await refresh(); openTaskView(id); }
   catch(e){ showErr(e.message); if (btn) { btn.disabled = false; btn.textContent = NEXT_LABEL[t.status]; } }
 }
-async function saveStepResult(todoId, btn){
+async function saveStepResult(todoId, btn, andClose){
   const el = document.getElementById('stepResultText'); const text = el ? el.value.trim() : '';
-  if (!text) return showErr('نتیجهٔ قدم را اول بنویس');
+  if (!text) return showErr('یادداشت قدم را اول بنویس');
   const t = S.todos.find(x=>x.id===todoId); if (!t) return;
   const cur = taskDetail(t);
-  const newDetail = (cur ? cur + '\n' : '') + 'نتیجهٔ قدم: ' + text;
+  const newDetail = (cur ? cur + '\n' : '') + 'یادداشت قدم: ' + text;
   const note = taskDetailNote(t);
   const fullText = '📋 جزئیات تسک «' + t.title + '»:\n' + newDetail;
   try {
     if (btn) btn.disabled = true;
     if (note) await call('updateNote', { id: note.id, text: fullText });
     else await call('addNote', { text: fullText });
-    await refresh(); openTaskView(todoId);
+    await refresh();
+    // Fix13: a saved draft is no longer dirty. From the dirty dialog
+    // ('ثبت و خروج') the sheet then closes; from its own button it
+    // re-renders the same view sheet.
+    clearDirty();
+    if (andClose) { TV = null; forceCloseSheet(); }
+    else openTaskView(todoId);
   } catch(e){ showErr(e.message); if (btn) btn.disabled = false; }
 }
+// Fix14 — task attachments, FRONTEND SNIPPET (copy-only, not yet merged).
+// Paste these functions into src/index.html near renderTaskView(), and
+// make the two renderTaskView() changes described in DIFF-NOTE.md.
+// Requires panel-api Fix14 (requestUpload / confirmUpload /
+// getAttachmentUrl / deleteAttachment) and getState returning
+// S.task_attachments (ready rows only). Uses the existing helpers:
+//   call(action, payload), refresh(), openTaskView(id), showErr(msg),
+//   esc(str), fmtCreated(epoch). No new library, no new secret.
+//
+// Upload flow (matches panel-api):
+//   1. requestUpload -> { attachment, uploadUrl } (signed, short-lived)
+//   2. PUT the file bytes to uploadUrl (plain fetch, Content-Type = mime)
+//   3. confirmUpload -> row becomes `ready` -> refresh() re-renders sheet
+// Nothing is ever uploaded as base64 inside a JSON body, and the browser
+// never sees a service-role key or a permanent file URL.
+
+function attachmentsFor(todoId){
+  const all = (S && S.task_attachments) || [];
+  return all.filter(function(a){ return String(a.todo_id) === String(todoId); });
+}
+
+function isAttachImage(mime){
+  return typeof mime === 'string' && mime.indexOf('image/') === 0;
+}
+
+function attachmentsHtml(todoId){
+  const list = attachmentsFor(todoId);
+  const items = list.length
+    ? list.map(function(a){
+        const thumb = isAttachImage(a.mime)
+          ? '<img src="" data-attach-thumb="' + a.id + '" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:pointer" onclick="openAttachment(' + a.id + ')">'
+          : '<button class="btn-ghost btn-sm" onclick="openAttachment(' + a.id + ')">📄 باز کردن</button>';
+        const kb = a.size_bytes ? Math.max(1, Math.round(a.size_bytes / 1024)) + ' KB' : '';
+        return '<div class="row" style="justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">'
+          + '<div class="row" style="gap:8px;align-items:center;flex:1;min-width:0">'
+          + thumb
+          + '<div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.file_name || 'فایل') + '</div>'
+          + '<div class="meta">' + esc(a.uploader_name || '') + (a.created_at ? ' · ' + fmtCreated(a.created_at) : '') + (kb ? ' · ' + kb : '') + '</div></div></div>'
+          + '<button class="btn-danger btn-sm" onclick="deleteTaskAttachment(' + todoId + ',' + a.id + ',this)">حذف</button></div>';
+      }).join('')
+    : '<p class="meta">هنوز فایلی برای این کار آپلود نشده.</p>';
+  return '<h2 style="margin-top:16px">📎 فایل‌های این کار</h2>'
+    + '<p class="meta" style="line-height:1.9">مدل‌ها، وکتورها و فایل‌های این کار را همین‌جا آپلود کن — همین‌جاست که میوز می‌بیندشان. فقط عکس (PNG/JPEG/WebP/GIF) و PDF، هر فایل حداکثر ۱۰ مگابایت، حداکثر ۲۰ فایل برای هر کار.</p>'
+    + items
+    + '<div class="row" style="gap:8px;margin-top:8px"><input type="file" id="attachFileInput" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style="flex:1;min-width:0">'
+    + '<button class="btn-teal btn-sm" onclick="uploadTaskFile(' + todoId + ',this)">⬆️ آپلود</button></div>'
+    + '<div id="attachStatus" class="meta" style="margin-top:6px"></div>';
+}
+
+// Fill image thumbnails AFTER the sheet renders: thumbnails need a signed
+// URL each, so they are fetched lazily per image instead of stored.
+// Call loadAttachThumbs(todoId) right after openSheet() in renderTaskView().
+async function loadAttachThumbs(todoId){
+  const imgs = document.querySelectorAll('[data-attach-thumb]');
+  for (const img of imgs) {
+    try {
+      const res = await call('getAttachmentUrl', { id: Number(img.getAttribute('data-attach-thumb')) });
+      if (res && res.url) img.src = res.url;
+    } catch (e) { /* thumbnail stays empty; the open button still works */ }
+  }
+}
+
+async function uploadTaskFile(todoId, btn){
+  const input = document.getElementById('attachFileInput');
+  const status = document.getElementById('attachStatus');
+  const file = input && input.files && input.files[0];
+  if (!file) return showErr('اول یک فایل انتخاب کن');
+  const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
+  if (allowed.indexOf(file.type) === -1) return showErr('فقط عکس (PNG/JPEG/WebP/GIF) و PDF قبول می‌شود');
+  if (file.size > 10 * 1024 * 1024) return showErr('فایل بزرگ‌تر از ۱۰ مگابایت است');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'در حال آماده‌سازی آپلود…';
+  try {
+    const req = await call('requestUpload', { todo_id: todoId, file_name: file.name, mime: file.type, size_bytes: file.size });
+    if (status) status.textContent = 'در حال آپلود…';
+    const put = await fetch(req.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+    if (!put.ok) throw new Error('آپلود ناموفق بود — دوباره تلاش کن');
+    if (status) status.textContent = 'در حال ثبت فایل…';
+    await call('confirmUpload', { id: req.attachment.id });
+    await refresh();
+    openTaskView(todoId);
+  } catch (e) {
+    showErr(e.message || 'آپلود ناموفق بود');
+    if (btn) btn.disabled = false;
+    if (status) status.textContent = '';
+  }
+}
+
+async function openAttachment(id){
+  try {
+    const res = await call('getAttachmentUrl', { id: id });
+    if (res && res.url) window.open(res.url, '_blank');
+  } catch (e) { showErr(e.message); }
+}
+
+async function deleteTaskAttachment(todoId, id, btn){
+  if (!confirm('این فایل حذف شود؟')) return;
+  try {
+    if (btn) btn.disabled = true;
+    await call('deleteAttachment', { id: id });
+    await refresh();
+    openTaskView(todoId);
+  } catch (e) { showErr(e.message); if (btn) btn.disabled = false; }
+}
+
 function renderTaskView(){
   if (!TV) return;
+  // Fix13: the view sheet's own save action is the step-result draft
+  // (its only unsaved input); step checkboxes save to the server the
+  // moment they are ticked, so they never mark the sheet dirty.
+  sheetSaveFn = viewDraft.trim() ? function(){ saveStepResult(TV.id, null, true); } : null;
+  sheetClearFn = function(){ TV = null; };
   const t = S.todos.find(x=>x.id===TV.id); if (!t) { TV = null; closeSheet(); return; }
   const steps = stepsFor(t.id);
   const det = taskDetail(t);
@@ -1853,20 +2190,30 @@ function renderTaskView(){
     : '<p class="meta">هنوز گامی نیست — دکمهٔ «ساختن گام‌ها از راهنما» پایین را بزن تا گام‌های راهنما ساخته شوند.</p>';
   const guideHtml = tailoredGuideHtml(t);
   const guideStepsBtn = steps.length ? '' : '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="createGuideSteps('+t.id+')">✦ ساختن گام‌ها از راهنما</button>';
+  // Fix13: guide collapse is a real back step, not just the same toggle
+  // re-labelled — collapsing returns to the steps/detail above and
+  // scrolls the sheet back to the top.
+  const guideSection = '<div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin-top:16px">راهنمای انجام</h2>' +
+    (viewGuideCollapsed
+      ? '<button class="btn-ghost btn-sm" onclick="toggleViewGuide()">نمایش راهنما ▾</button>'
+      : '<button class="btn-ghost btn-sm" onclick="toggleViewGuide()">‹ بازگشت به گام‌ها و جزئیات</button>') + '</div>' +
+    (viewGuideCollapsed ? '' : '<div>' + guideHtml + guideStepsBtn + '</div>');
   openSheet(
     '<h2 style="margin-top:0">'+esc(t.title)+'</h2>' +
     '<div class="meta" style="margin-bottom:12px">شناسه #'+t.id+(t.created_at ? ' · ساخته‌شده ' + fmtCreated(t.created_at) : '')+' · '+esc(t.category || 'نامشخص')+' · '+esc(ASSIGNEE[t.assignee] || t.assignee)+' · '+esc(STATUS[t.status])+' · مهلت: '+dateLabel+'</div>' +
     (det ? '<div style="line-height:1.9">'+guideListHtml(det)+'</div>' : '<p class="meta">توضیحی نوشته نشده.</p>') +
     '<h2>گام‌ها</h2>' + stepsHtml +
-    '<h2 style="margin-top:16px">راهنمای انجام</h2>' + guideHtml + guideStepsBtn +
+    guideSection +
+    attachmentsHtml(t.id) +
     '<h2 style="margin-top:16px">اسکرین‌شات قدم‌ها</h2>' +
-    '<p class="meta" style="line-height:1.9">پنل جای آپلود عکس ندارد. قدم‌های داخل پنل اصلاً اسکرین لازم ندارند — انجامشان را از روی همان برگه می‌بینی (وضعیت عوض می‌شود، گام تیک می‌خورد، نتیجه ثبت می‌شود). فقط اگر قدمی بیرون از پنل بود (مثلاً ربات تلگرام یا سایتی دیگر) و خواستی مدرکش را نشان بدهی، همان یک اسکرین را برای Muse در چت ادمین بفرست؛ نتیجهٔ هر قدم را هم در کادر زیر بنویس تا در توضیح همین کار ثبت شود.</p>' +
-    '<textarea id="stepResultText" placeholder="نتیجه این قدم را بنویس…" style="min-height:70px"></textarea>' +
-    '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="saveStepResult('+t.id+',this)">ثبت نتیجهٔ قدم</button>' +
+    '<p class="meta" style="line-height:1.9">کادر زیر فقط برای یک یادداشت یک‌خطی است (مثلاً «مدل‌ها پیدا شد») و برای نتیجه‌های متنی مثل هندل و نام؛ خودِ فایل‌ها در بخش 📎 همین برگه آپلود می‌شوند — همان‌جاست که میوز می‌بیندشان. قدم‌های داخل پنل اسکرین لازم ندارند؛ انجامشان را از روی همان برگه می‌بینی.</p>' +
+    '<textarea id="stepResultText" placeholder="یادداشت یک‌خطی دربارهٔ این قدم (نه خودِ تحویل کار)…" style="min-height:70px" oninput="viewDraft=this.value;markDirty()">'+esc(viewDraft)+'</textarea>' +
+    '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="saveStepResult('+t.id+',this)">ثبت یادداشت قدم</button>' +
     '<div class="row" style="margin-top:16px"><button class="btn-teal" style="flex:1" onclick="openTaskEdit('+t.id+')">✏️ ویرایش</button>' +
     '<button class="btn-ghost" style="flex:1" onclick="startTaskView('+t.id+',this)">'+NEXT_LABEL[t.status]+'</button>' +
-    '<button class="btn-ghost" style="flex:1" onclick="TV=null;closeSheet()">بستن</button></div>'
+    '<button class="btn-ghost" style="flex:1" onclick="closeSheet()">بستن پنل (کار دست نمی‌خورد)</button></div>'
   );
+  loadAttachThumbs(t.id);
 }
 async function createGuideSteps(todoId){
   const t = S.todos.find(x=>x.id===todoId); if (!t) return;
@@ -1890,49 +2237,58 @@ function openTaskEdit(id){
 }
 function renderTaskSheet(){
   if (!TS) return;
+  sheetSaveFn = saveTaskSheet;
+  sheetClearFn = function(){ TS = null; };
   const dateLabel = TS.deadline ? fmtStoredDate(TS.deadline) : 'بدون مهلت';
   const stepsHtml = TS.steps.map((s, i)=>{
     const sn = s.id ? stepNoteFor(TS.id, s.id) : null;
-    return '<div class="step-row"><input type="checkbox" '+(s.done?'checked':'')+' onchange="TS.steps['+i+'].done=this.checked;renderTaskSheet()">' +
-    '<input type="text" value="'+esc(s.text)+'" onchange="TS.steps['+i+'].text=this.value">' +
-    '<button class="btn-danger btn-sm" onclick="TS.steps.splice('+i+',1);renderTaskSheet()">✕</button></div>' +
+    return '<div class="step-row"><input type="checkbox" '+(s.done?'checked':'')+' onchange="TS.steps['+i+'].done=this.checked;markDirty();renderTaskSheet()">' +
+    '<input type="text" value="'+esc(s.text)+'" onchange="TS.steps['+i+'].text=this.value;markDirty()">' +
+    '<button class="btn-danger btn-sm" onclick="TS.steps.splice('+i+',1);markDirty();renderTaskSheet()">✕</button></div>' +
     (sn ? '<div class="sub-note" style="margin:0 0 8px">📝 '+esc(sn.body)+'</div>' : '');
   }).join('');
   openSheet(
+    // Fix13: back from EDIT to VIEW — the return the user asked for.
+    // (Dirty handling lives in backToTaskView; clean edits go back at once.)
+    '<button class="btn-ghost btn-sm" style="margin-bottom:8px" onclick="backToTaskView()">‹ بازگشت به برگه کار</button>' +
     '<h2 style="margin-top:0">ویرایش کار</h2>' + '<div class="meta" style="margin-bottom:12px">شناسه #' + TS.id + (TS.createdAt ? ' · ساخته‌شده ' + fmtCreated(TS.createdAt) : '') + '</div>' +
-    '<input id="sheetTitle" value="'+esc(TS.title)+'" placeholder="عنوان کار" onchange="TS.title=this.value">' +
+    '<input id="sheetTitle" value="'+esc(TS.title)+'" placeholder="عنوان کار" onchange="TS.title=this.value;markDirty()">' +
     '<p class="meta">وضعیت</p><div class="seg" style="margin-bottom:12px">' +
-    ['queued','in_progress','done'].map(s=>'<button class="'+(TS.status===s?'on':'')+'" onclick="TS.status=\''+s+'\';renderTaskSheet()">'+STATUS[s]+'</button>').join('') + '</div>' +
+    ['queued','in_progress','done'].map(s=>'<button class="'+(TS.status===s?'on':'')+'" onclick="TS.status=\''+s+'\';markDirty();renderTaskSheet()">'+STATUS[s]+'</button>').join('') + '</div>' +
     '<p class="meta">مجری</p><div class="seg" style="margin-bottom:12px">' +
-    ['amir','negin','both'].map(a=>'<button class="'+(TS.assignee===a?'on':'')+'" onclick="TS.assignee=\''+a+'\';renderTaskSheet()">'+ASSIGNEE[a]+'</button>').join('') + '</div>' +
-    '<p class="meta">دسته</p><select onchange="TS.category=this.value">' + S.categories.map(c=>'<option value="'+esc(c)+'"'+(TS.category===c?' selected':'')+'>'+esc(c)+'</option>').join('') + '</select>' +
-    '<p class="meta">اولویت</p><select onchange="TS.priority=this.value">' + ['low','medium','high'].map(p=>'<option value="'+p+'"'+(TS.priority===p?' selected':'')+'>'+PRI[p]+'</option>').join('') + '</select>' +
+    ['amir','negin','both'].map(a=>'<button class="'+(TS.assignee===a?'on':'')+'" onclick="TS.assignee=\''+a+'\';markDirty();renderTaskSheet()">'+ASSIGNEE[a]+'</button>').join('') + '</div>' +
+    '<p class="meta">دسته</p><select onchange="TS.category=this.value;markDirty()">' + S.categories.map(c=>'<option value="'+esc(c)+'"'+(TS.category===c?' selected':'')+'>'+esc(c)+'</option>').join('') + '</select>' +
+    '<p class="meta">اولویت</p><select onchange="TS.priority=this.value;markDirty()">' + ['low','medium','high'].map(p=>'<option value="'+p+'"'+(TS.priority===p?' selected':'')+'>'+PRI[p]+'</option>').join('') + '</select>' +
     '<p class="meta">مهلت: ' + dateLabel + '</p><div class="row" style="margin-bottom:12px">' +
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'today\')">امروز</button>' +
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'tomorrow\')">فردا</button>' +
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'week\')">هفتهٔ بعد</button>' +
     '<button class="btn-ghost btn-sm" onclick="setSheetDeadline(\'\')">بدون مهلت</button>' +
     '<button class="btn-ghost btn-sm" onclick="openSheetPicker()">📅 تقویم</button></div>' +
-    '<p class="meta">یادداشت راهنما (اختیاری) — چند راه‌حل بنویس؛ هر راه در یک خط</p><textarea id="guideText" oninput="TS.detail=this.value;renderGuidePreview()" style="min-height:110px">'+esc(TS.detail)+'</textarea>' +
+    '<p class="meta">یادداشت راهنما (اختیاری) — چند راه‌حل بنویس؛ هر راه در یک خط</p><textarea id="guideText" oninput="TS.detail=this.value;markDirty();renderGuidePreview()" style="min-height:110px">'+esc(TS.detail)+'</textarea>' +
     '<div class="row" style="margin-top:2px"><button class="btn-ghost btn-sm" onclick="addGuideLine()">＋ راه‌حل تازه</button></div>' +
     '<div id="guidePreview" style="margin-top:8px">'+guideListHtml(TS.detail)+'</div>' +
-    '<h2>راهنمای انجام</h2><p class="meta">تک‌راهنمای همین کار — از روی عنوان، توضیح و دستهٔ همین کار ساخته شده؛ تحلیل زندهٔ دستیار نیست.</p>' +
-    tailoredGuideHtml({ title: TS.title, category: TS.category, detail: TS.detail, id: TS.id, assignee: TS.assignee }) +
+    '<div class="row" style="justify-content:space-between;align-items:center"><h2>راهنمای انجام</h2>' +
+    (editGuideCollapsed
+      ? '<button class="btn-ghost btn-sm" onclick="toggleEditGuide()">نمایش راهنما ▾</button>'
+      : '<button class="btn-ghost btn-sm" onclick="toggleEditGuide()">‹ بازگشت به ویرایش کار</button>') + '</div>' +
+    '<p class="meta">تک‌راهنمای همین کار — از روی عنوان، توضیح و دستهٔ همین کار ساخته شده؛ تحلیل زندهٔ دستیار نیست.</p>' +
+    (editGuideCollapsed ? '' : tailoredGuideHtml({ title: TS.title, category: TS.category, detail: TS.detail, id: TS.id, assignee: TS.assignee })) +
     '<h2>گام‌ها</h2>' +
     (TS.steps.length ? stepsHtml : '<p class="meta">هنوز گامی نیست.</p>') +
     '<div class="row" style="margin-top:8px"><button class="btn-ghost btn-sm" onclick="addSheetStep()">＋ گام تازه</button><button class="btn-ghost btn-sm" onclick="breakIntoSteps()">✦ شکستن به گام‌ها</button></div>' +
     '<p class="meta">گام‌ها و توضیح با ذخیره، روی سرور ثبت می‌شوند و برای هر دو نفر دیده می‌شوند.</p>' +
     '<button class="btn-teal" style="width:100%;margin-top:12px" onclick="saveTaskSheet()">ذخیره</button>' +
     '<div class="row" style="margin-top:8px"><button class="btn-ghost" style="flex:1" onclick="updateTodo(TS.id,NEXT_STATUS[TS.status]);closeSheet()">'+NEXT_LABEL[TS.status]+'</button>' +
-    '<button class="btn-danger" style="flex:1" onclick="closeSheet();deleteTodo(TS.id)">حذف کار</button>' +
-    '<button class="btn-ghost" style="flex:1" onclick="TS=null;closeSheet()">بستن</button></div>'
+    '<button class="btn-danger" style="flex:1" onclick="closeSheetDelete(TS.id)">حذف کار</button>' +
+    '<button class="btn-ghost" style="flex:1" onclick="closeSheet()">بستن</button></div>'
   );
   const ti = document.getElementById('sheetTitle'); if (ti) ti.focus();
 }
 function setSheetDeadline(kind){
   if (kind === '') TS.deadline = '';
   else { const d = new Date(); if (kind === 'tomorrow') d.setDate(d.getDate()+1); if (kind === 'week') d.setDate(d.getDate()+7); TS.deadline = jalaliStr(d); }
-  renderTaskSheet();
+  markDirty(); renderTaskSheet();
 }
 function openSheetPicker(){
   // Reuse the shared picker; it re-renders the sheet from TS afterwards.
@@ -1944,7 +2300,7 @@ function openSheetPicker(){
   const view = document.createElement('input'); view.id = 'sheetDeadlineView'; view.type = 'hidden'; view.style.display = 'none'; document.body.appendChild(view);
   openPicker('sheetDeadline');
 }
-function addSheetStep(){ TS.steps.push({id: null, text:'', done:false}); renderTaskSheet(); }
+function addSheetStep(){ TS.steps.push({id: null, text:'', done:false}); markDirty(); renderTaskSheet(); }
 function breakIntoSteps(){
   if (TS.steps.length) return;
   // Drafts only: each accepted step is created server-side via addStep
@@ -1953,7 +2309,7 @@ function breakIntoSteps(){
   // generic filler like 'طرح کلی' / 'پیش‌نویس'.
   const g = tailoredGuideFor(TS);
   TS.steps = g.steps.map(s=>({id: null, text: s.action, done: false}));
-  renderTaskSheet();
+  markDirty(); renderTaskSheet();
 }
 async function saveTaskSheet(){
   if (!TS) return;
@@ -2000,7 +2356,7 @@ async function saveTaskSheet(){
         if (!keptIds.has(old.id)) await call('deleteStep', { id: old.id });
       }
     } catch(e2) { stepErr = e2; }
-    TS = null; closeSheet(); await refresh();
+    TS = null; sheetDirty = false; forceCloseSheet(); await refresh();
     if (descErr) showErr('توضیح ذخیره نشد: ' + descErr.message);
     else if (stepErr) showErr('گام‌ها ذخیره نشدند: ' + stepErr.message);
   } catch(e){ showErr(e.message); }
