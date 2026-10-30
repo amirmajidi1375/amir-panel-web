@@ -144,7 +144,8 @@
   .chan-head { background:var(--tagteal); border-radius:12px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
   .chan-row2 { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
   .chan-row2:last-child { border-bottom:0; }
-  .chan-badge { width:36px; height:36px; border-radius:10px; background:var(--ghost); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex:none; }
+  .chan-badge { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex:none; }
+  .chan-badge svg { width:20px; height:20px; display:block; }
   .chan-handle { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .chan-dot { width:10px; height:10px; border-radius:50%; flex:none; }
 </style>
@@ -312,8 +313,7 @@
 
     <!-- ============ CHANNELS (simple directory, localStorage as before) ============ -->
     <section class="screen" id="scr-channels">
-      <div class="card"><p style="margin:0;line-height:1.8">کانال‌های هر دسته با هندل و لینک. این فهرست دستی است و روی همین دستگاه ذخیره می‌شود؛ آمار زندهٔ پلتفرم‌ها (مثل بازدید اینستاگرام که فقط داخل اپ است) به‌صورت خودکار همگام نمی‌شود — تحلیل پنل از روی کارها، خط لوله و گزارش‌های ثبت‌شده محاسبه می‌شود. توجه: ویرایش کانال‌ها فعلاً فقط روی همین دستگاه ذخیره می‌شود؛ تا جدول مشترک کانال‌ها (قدم یک یکپارچه‌سازی) ساخته نشود، ویرایش روی یک دستگاه روی دستگاه دیگر دیده نمی‌شود. برای آوردن فهرست به‌روز، دکمه «🔄 به‌روزرسانی کانال‌ها» در بالای همین صفحه را بزن.</p></div>
-      <div class="card"><button class="btn-teal" id="chanRefreshBtn" onclick="refreshChannels()" style="width:100%">🔄 به‌روزرسانی کانال‌ها</button><p class="meta" style="margin:8px 0 0;line-height:1.8">این دکمه حافظه کانال‌های همین دستگاه را پاک می‌کند و فهرست به‌روز را می‌آورد؛ ویرایش‌هایی که فقط روی همین دستگاه انجام شده بود، پاک می‌شود.</p><div id="chanRefreshMsg" class="meta" style="margin:8px 0 0;line-height:1.8"></div></div>
+            <div class="card"><button class="btn-teal" id="chanRefreshBtn" onclick="refreshChannels()" style="width:100%">🔄 به‌روزرسانی کانال‌ها</button><p class="meta" style="margin:8px 0 0;line-height:1.8">این دکمه حافظه کانال‌های همین دستگاه را پاک می‌کند و فهرست به‌روز را می‌آورد؛ ویرایش‌هایی که فقط روی همین دستگاه انجام شده بود، پاک می‌شود.</p><div id="chanRefreshMsg" class="meta" style="margin:8px 0 0;line-height:1.8"></div></div>
       <div id="chanList"></div>
     </section>
 
@@ -377,6 +377,7 @@ let pipeStageSel = 0, pipeCatSel = 'all', pipeView = 'stage';
 let repCatFilter = 'all';
 let notesSeg = 'notes';
 let TS = null; // task-sheet state (existing task being edited)
+let TV = null; // task-view state (read-only detail sheet; editing is via its edit button only)
 
 // ---------- Theme ----------
 function currentTheme(){ try { return localStorage.getItem('panelTheme') === 'dark' ? 'dark' : 'light'; } catch(e){ return 'light'; } }
@@ -457,7 +458,7 @@ async function refresh(){
       document.getElementById('fab').style.display='none';
       document.getElementById('pending').style.display='block';
       hideBootLoading();
-      document.getElementById('pendingText').textContent = 'سلام ' + (res.name || '') + '! درخواست دسترسی‌ات ثبت شد.';
+      document.getElementById('pendingText').textContent = (res.name && res.name.indexOf('@') < 0 ? 'سلام ' + res.name.split(' ')[0] + '! ' : '') + 'درخواست دسترسی‌ات ثبت شد.';
       return;
     }
     S = res;
@@ -964,8 +965,11 @@ function seqOpenTasksSorted(list){
 // amirmajidi1375@gmail.com (or tgId 94731359) = Amir, anyone else = Negin.
 // A 'both' task belongs to both; a single-assignee task only to its owner.
 function homeMeName(){
+  // Fix7: never show an email (or a full name) in the greeting — first
+  // name only. S.me.name has been observed to hold the email address,
+  // which is what produced an email in the Home greeting.
   if (!S || !S.me) return 'شما';
-  if (S.me.name) return S.me.name;
+  if (S.me.name && S.me.name.indexOf('@') < 0) return S.me.name.split(' ')[0];
   return mePerson() === 'amir' ? 'امیر' : 'نگین';
 }
 function homeMyOpenTasks(){
@@ -1024,18 +1028,56 @@ function homeTikTokRows(){
 }
 function homeMethodsCompact(t){
   const methods = methodLibraryFor({ title: t.title, category: t.category, detail: taskDetail(t) });
-  return methods.map(m=>'<div style="margin-top:8px;line-height:1.8"><b>'+esc(m.name)+'</b> — '+esc(m.desc)+'<div class="meta">👍 '+esc(m.pros)+' · 👎 '+esc(m.cons)+'</div></div>').join('');
+  return methods.map(m=>'<div style="margin-top:8px;line-height:1.8"><b>'+esc(m.name)+'</b> — '+esc(m.first)+'<div class="meta">'+esc(m.trade)+'</div></div>').join('');
 }
 function homeTaskCard(t, showMethods){
   const due = t.deadline ? fmtStoredDate(t.deadline) : 'بدون مهلت';
   const d = daysUntil(t.deadline);
   const dueLabel = (d !== null && d < 0) ? '🔴 دیرکرده · ' + due : (d === 0 ? '🟠 امروز · ' + due : due);
   const steps = homeStepsChecklist(t);
-  const methodsBtn = '<button class="btn-ghost btn-sm" onclick="openTaskSheet('+t.id+');showMethodGuide()">۳ روش انجام ←</button>';
+  const methodsBtn = '<button class="btn-ghost btn-sm" onclick="openTaskView('+t.id+',true)">۳ روش انجام ←</button>';
   return '<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-start"><div style="flex:1;min-width:0"><b style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</b>' +
     '<div class="meta" style="margin-top:4px">'+esc(t.category || 'نامشخص')+' · '+esc(ASSIGNEE[t.assignee] || t.assignee)+' · '+dueLabel+'</div></div>' + methodsBtn + '</div>' +
     (showMethods ? '<div style="margin-top:6px"><b>راهنمای انجام</b>' + homeMethodsCompact(t) + '</div>' : '<div class="meta" style="margin-top:6px">راهنمای انجام: ' + (methodLibraryFor({ title: t.title, category: t.category, detail: taskDetail(t) }).map(m=>esc(m.name)).join(' · ')) + '</div>') +
-    (steps ? '<div style="margin-top:8px"><b>To Do</b>' + steps + '</div>' : '<div class="meta" style="margin-top:8px">هنوز گامی نیست — از برگهٔ کار، «تحلیل روش‌های انجام» را بزن تا گام‌هایش ساخته شوند.</div>') + '</div>';
+    (steps ? '<div style="margin-top:8px"><b>To Do</b>' + steps + '</div>' : '<div class="meta" style="margin-top:8px">هنوز گامی نیست — از برگهٔ کار، «روش‌های انجام» را در برگهٔ کار باز کن تا گام‌هایش ساخته شوند.</div>') + '</div>';
+}
+function toggleHomeClamp(id, btn){
+  const d = document.getElementById('homeNextDesc' + id); if (!d || !btn) return;
+  const expanded = d.dataset.expanded === '1';
+  if (expanded) { d.style.webkitLineClamp = '2'; d.style.display = '-webkit-box'; d.dataset.expanded = '0'; btn.textContent = 'بیشتر'; }
+  else { d.style.webkitLineClamp = 'none'; d.style.display = 'block'; d.dataset.expanded = '1'; btn.textContent = 'کمتر'; }
+}
+function toggleHomeGuide(id, btn){
+  const d = document.getElementById('homeGuide' + id); if (!d || !btn) return;
+  const open = d.style.display !== 'none';
+  d.style.display = open ? 'none' : 'block';
+  btn.textContent = open ? 'روش‌های انجام ▾' : 'بستن راهنما ▴';
+}
+// Fix7: theme grouping for Home. When several open tasks share the
+// logo/vector theme, they are one main piece of work, not a single
+// page's task. Grouping is derived ONLY from real tasks (title,
+// category, detail) and their real assignees — nothing is invented.
+function homeThemeGroup(list){
+  const group = list.filter(t=>{
+    const txt = ((t.title || '') + ' ' + (t.category || '') + ' ' + (taskDetail(t) || '')).toLowerCase();
+    return txt.indexOf('لوگو') >= 0 || txt.indexOf('وکتور') >= 0;
+  });
+  return group.length >= 2 ? group : null;
+}
+function homeGroupLines(group, assignee, label){
+  const items = group.filter(t=>t.assignee === assignee);
+  if (!items.length) return '';
+  return '<div style="margin-top:8px;line-height:1.9"><b>' + label + ':</b> ' + items.map(t=>'<span style="cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+t.id+')">'+esc(t.title)+'</span>').join('، ') + '</div>' +
+    items.map(t=>{ const st = homeStepsChecklist(t); return st ? '<div style="margin-top:4px">' + st + '</div>' : ''; }).join('');
+}
+function homeGroupCard(group){
+  let html = '<div class="card" style="border:2px solid #2dd4bf"><div class="meta">کار اصلی این روزها</div><b style="font-size:1.1rem">لوگوی پیج‌ها</b>' +
+    '<div class="meta" style="margin-top:4px">این کارها از تسک‌های واقعی لوگو و وکتور کنار هم چیده شده‌اند؛ هر عنوان را بزن تا برگهٔ همان کار باز شود.</div>';
+  html += homeGroupLines(group, 'amir', 'کار امیر');
+  html += homeGroupLines(group, 'negin', 'کار نگین');
+  html += homeGroupLines(group, 'both', 'مشترک');
+  html += '</div>';
+  return html;
 }
 function renderHomeDash(){
   const el = document.getElementById('homeDash'); if (!el || !S) return;
@@ -1053,19 +1095,28 @@ function renderHomeDash(){
   const detail = taskDetail(next);
   const firstSentence = detail ? detail.split('\n')[0] : '';
   const isAccount = homeIsAccountTask(next);
+  // Fix7: concise first view — description clamped to 2 lines with a
+  // 'بیشتر' toggle, and the full method guide behind a collapsed toggle.
   let nextHtml = '<div class="card" style="border:2px solid #2dd4bf"><div class="meta">قدم بعدی</div><b style="font-size:1.1rem;cursor:pointer;text-decoration:underline" onclick="openTaskSheet('+next.id+')">'+esc(next.title)+'</b>' +
-    '<div style="margin-top:6px;line-height:1.8">' + (firstSentence ? esc(firstSentence) : 'این کار: '+esc(next.title)+' — دستهٔ '+esc(next.category || 'نامشخص')+'.') + '</div>' +
+    '<div id="homeNextDesc'+next.id+'" style="margin-top:6px;line-height:1.8;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + (firstSentence ? esc(firstSentence) : 'این کار: '+esc(next.title)+' — دستهٔ '+esc(next.category || 'نامشخص')+'.') + '</div>' +
+    '<button class="btn-ghost btn-sm" style="margin-top:2px" onclick="toggleHomeClamp('+next.id+',this)">بیشتر</button>' +
     '<div class="meta" style="margin-top:4px">'+esc(next.category || 'نامشخص')+' · '+esc(ASSIGNEE[next.assignee] || next.assignee)+' · '+(next.deadline ? fmtStoredDate(next.deadline) : 'بدون مهلت')+'</div>' +
-    '<div style="margin-top:8px"><b>راهنمای انجام — ۳ روش</b>' + homeMethodsCompact(next) + '</div>';
+    '<button class="btn-ghost btn-sm" style="margin-top:8px" onclick="toggleHomeGuide('+next.id+',this)">روش‌های انجام ▾</button>' +
+    '<div id="homeGuide'+next.id+'" style="display:none;margin-top:6px"><b>راهنمای انجام — ۳ روش</b>' + homeMethodsCompact(next) + '</div>';
   if (isAccount) {
     nextHtml += '<div style="margin-top:10px"><b>To Do — برای هر پیج، یکی</b><p class="meta" style="line-height:1.8">هر پیج که ساخته شد، هندلش را همین‌جا بنویس تا ثبت شود. هندل‌ها فقط از دادهٔ کانال‌های همین پنل می‌آیند؛ چیزی از خودم ساخته نشده است.</p>' + homeTikTokRows() + '</div>';
   }
   const steps = homeStepsChecklist(next);
-  nextHtml += (steps ? '<div style="margin-top:10px"><b>To Do</b>' + steps + '</div>' : (isAccount ? '' : '<div class="meta" style="margin-top:10px">هنوز گامی نیست — از برگهٔ کار، «تحلیل روش‌های انجام» را بزن تا گام‌هایش ساخته شوند.</div>'));
+  nextHtml += (steps ? '<div style="margin-top:10px"><b>To Do</b>' + steps + '</div>' : (isAccount ? '' : '<div class="meta" style="margin-top:10px">هنوز گامی نیست — از برگهٔ کار، «روش‌های انجام» را در برگهٔ کار باز کن تا گام‌هایش ساخته شوند.</div>'));
   nextHtml += '<button class="btn-ghost btn-sm" style="margin-top:10px" onclick="openTaskSheet('+next.id+')">باز کردن برگهٔ کار</button></div>';
-  const rest = mine.slice(1);
+  // Fix7: if several open tasks share the logo/vector theme, show ONE
+  // grouped main-work card (owner breakdown from real tasks) instead of
+  // a single-page task; otherwise keep the single next task. No task
+  // data is changed here — presentation only.
+  const logoGroup = homeThemeGroup(mine);
+  const rest = logoGroup ? mine.filter(t=>logoGroup.indexOf(t) < 0) : mine.slice(1);
   el.innerHTML = '<div class="card" style="background:var(--bg2,transparent)"><b>سلام '+esc(name)+' 👋</b><div class="meta" style="margin-top:4px">کارهای باز تو: '+toFaDigits(mine.length)+' کار (خودت + «هر دو»)، به ترتیب ساخت — همان ترتیبی که در حالت مرحله‌ای کارها دیده می‌شود.</div></div>' +
-    '<h2>قدم بعدی</h2>' + nextHtml +
+    (logoGroup ? '<h2>کار اصلی این روزها</h2>' + homeGroupCard(logoGroup) : '<h2>قدم بعدی</h2>' + nextHtml) +
     (rest.length ? '<h2>کارهای امروز تو</h2>' + rest.map(t=>homeTaskCard(t, false)).join('') : '');
 }
 
@@ -1413,7 +1464,7 @@ function taskCardHtml(t){
   const expanded = expandedTasks.has(t.id);
   const tickNext = t.status === 'done' ? 'in_progress' : 'done';
   const createdMeta = fmtCreated(t.created_at);
-  return '<div class="card item task-card'+(t.status==='done' ? ' is-done' : '')+'" onclick="openTaskSheet('+t.id+')"><div class="row" style="justify-content:space-between;flex-wrap:nowrap">' +
+  return '<div class="card item task-card'+(t.status==='done' ? ' is-done' : '')+'" onclick="openTaskView('+t.id+')"><div class="row" style="justify-content:space-between;flex-wrap:nowrap">' +
     '<button class="tick'+(t.status==='done'?' on':'')+'" onclick="event.stopPropagation();updateTodo('+t.id+',\''+tickNext+'\')" aria-label="انجام شد">✓</button>' +
     '<div class="title" style="flex:1">'+esc(t.title)+'</div>' +
     '<span class="tag '+stCls+'" style="flex:none;white-space:nowrap">'+STATUS[t.status]+'<i class="pri-dot '+priCls+'"></i></span></div>' +
@@ -1536,41 +1587,52 @@ async function rescheduleTomorrow(id){
 // the sheet shows the task's own category and says plainly when a page
 // name still needs to be chosen.
 function methodLibraryFor(t){
+  // Action-first library: every method tells the user WHAT TO DO FIRST,
+  // WHERE (exact source / check), HOW TO DECIDE, and WHAT THE FINISHED
+  // OUTPUT LOOKS LIKE. Pros/cons are one short line, never the content.
   const text = ((t.title || '') + ' ' + (t.category || '') + ' ' + (t.detail || '')).toLowerCase();
   const has = (...ws) => ws.some(w => text.indexOf(w) >= 0);
   const pageNote = 'دستهٔ این کار: ' + (t.category || 'نامشخص') + '. هندلی در اینجا ساخته یا ادعا نشده است؛ اگر نام پیج هنوز نهایی نیست، اول آن را مشخص کن.';
+  const check4 = 'برای هر نام، وضعیت را موقع ثبت در اینستاگرام، یوتیوب، آپارات و تیک‌تاک بررسی کن — جستجوی گوگل به‌تنهایی کافی نیست.';
   if (has('نامگذاری', 'نام پیج', 'نام صفحه', 'برند', 'لوگو', 'هندل', 'آیدی پیج')) return [
-    { name: 'نام کوتاه و قابل‌تلفظ', desc: 'نامی که در یک نفس گفته می‌شود و راحت در ذهن می‌ماند.', pros: 'یادآوری و جستجویش آسان است.', cons: 'نام‌های خوبِ کوتاه معمولاً زود گرفته می‌شوند.', needs: 'فهرست چند نام، و بررسی موقع ثبت در هر شبکه.', pageNote: pageNote, steps: ['سه کلمهٔ اصلی موضوع را بنویس', 'از ترکیب آن‌ها چند نام کوتاه بساز', 'هر نام را بلند بگو و ببین راحت تلفظ می‌شود یا نه', 'نام را موقع ثبت در هر شبکه بررسی کن؛ جستجو به‌تنهایی کافی نیست', 'نام نهایی را با یک نفر دیگر امتحان کن', 'نام و توضیح کوتاه پیج را یکجا ثبت کن'] },
-    { name: 'نام توصیفی بر اساس موضوع', desc: 'نام از دل موضوع می‌آید تا مخاطب همان اول بفهمد پیج دربارهٔ چیست.', pros: 'از همان اول موضوع روشن است.', cons: 'ممکن است بلند یا شبیه پیج‌های دیگر شود.', needs: 'موضوع دقیق پیج و چند نمونه نام.', pageNote: pageNote, steps: ['موضوع پیج را در یک جمله بنویس', 'کلمات کلیدی همان موضوع را جدا کن', 'چند نام توصیفی بساز و طولانی‌ها را کوتاه کن', 'نام را با موضوع پیج‌های مشابه مقایسه کن', 'نام را موقع ثبت در هر شبکه بررسی کن', 'نام و توضیح کوتاه پیج را یکجا ثبت کن'] },
-    { name: 'نام با پسوند مشخص', desc: 'به یک نام ساده، یک پسوند مشخص اضافه می‌شود تا یکتا شود.', pros: 'معمولاً آزادتر است و هویت یکدست می‌سازد.', cons: 'اگر پسوند بی‌ربط باشد، نام را مصنوعی می‌کند.', needs: 'نام پایه و یک پسوند مرتبط با موضوع.', pageNote: pageNote, steps: ['نام پایه را انتخاب کن', 'دو سه پسوند مرتبط با موضوع را امتحان کن', 'ترکیب نهایی را بلند بخوان و از نظر املا بررسی کن', 'ترکیب را موقع ثبت در هر شبکه بررسی کن', 'پسوند را در همهٔ شبکه‌ها یکسان نگه دار', 'نام و توضیح کوتاه پیج را یکجا ثبت کن'] },
+    { name: 'نام کوتاه و قابل‌تلفظ', first: 'سه کلمهٔ اصلی موضوع پیج را بنویس، بعد از ترکیبشان ۱۰ نام کوتاه بساز.', where: check4, decide: 'اگر نام در هر ۴ شبکه آزاد بود و با صدای بلند در یک نفس گفته شد، همان را انتخاب کن؛ اگر در یک شبکه گرفته شده بود، یک پسوند اضافه کن، نه اینکه نام را عوض کنی.', output: 'فهرست ۵ نامزد نهایی، هر کدام با وضعیت آزاد یا گرفته در هر ۴ شبکه، و یک نام انتخاب‌شده با دلیل یک‌خطی.', trade: 'یادآوری و جستجویش آسان است، ولی نام‌های خوبِ کوتاه معمولاً زود گرفته می‌شوند.', needs: 'فهرست چند نام و بررسی موقع ثبت در هر شبکه.', pageNote: pageNote, steps: ['سه کلمهٔ اصلی موضوع را بنویس', 'از ترکیبشان ۱۰ نام کوتاه بساز', 'هر نام را با صدای بلند بگو و نام‌های سخت‌تلفظ را خط بزن', 'وضعیت هر نام را موقع ثبت در اینستاگرام، یوتیوب، آپارات و تیک‌تاک بررسی کن', '۵ نامزد نهایی را با وضعیت هر شبکه فهرست کن', 'نام نهایی را انتخاب کن و دلیلش را در یک خط بنویس'] },
+    { name: 'نام توصیفی بر اساس موضوع', first: 'موضوع پیج را در یک جمله بنویس، بعد کلمات کلیدی همان جمله را جدا کن و از ترکیبشان نام بساز.', where: 'نام‌های پیج‌های مشابه را در اینستاگرام با همان کلمات کلیدی سرچ کن تا ببینی چه نام‌هایی قبلاً گرفته شده و نام تو با آن‌ها قاطی نشود. ' + check4, decide: 'اگر مخاطب از روی نام فهمید پیج دربارهٔ چیست و نام با پیج‌های مشابه قاطی نشد، انتخابش کن؛ اگر نام آن‌قدر کلی شد که به هر پیجی می‌خورد، یک کلمهٔ خاص از موضوع را به آن اضافه کن.', output: '۵ نامزد توصیفی، هر کدام با یک جمله که چرا موضوع را می‌رساند، و یک نام انتخاب‌شده.', trade: 'از همان اول موضوع روشن است، ولی ممکن است بلند یا شبیه پیج‌های دیگر شود.', needs: 'موضوع دقیق پیج و چند نمونه نام.', pageNote: pageNote, steps: ['موضوع پیج را در یک جمله بنویس', 'کلمات کلیدی همان جمله را جدا کن', 'از ترکیبشان چند نام توصیفی بساز و طولانی‌ها را کوتاه کن', 'نام‌ها را با نام پیج‌های مشابه مقایسه کن', 'وضعیت هر نام را موقع ثبت در هر ۴ شبکه بررسی کن', 'نام نهایی را انتخاب کن و توضیح کوتاهش را یکجا ثبت کن'] },
+    { name: 'نام با پسوند مشخص', first: 'نام پایه را انتخاب کن، بعد ۳ پسوند مرتبط با موضوع را به آن بچسبان و هر ترکیب را جدا امتحان کن.', where: check4 + ' پسوند را در همهٔ شبکه‌ها یکسان نگه دار تا هویت پیج یکدست بماند.', decide: 'اگر ترکیب در همهٔ شبکه‌ها آزاد بود و پسوند به موضوع ربط داشت، انتخابش کن؛ اگر پسوند بی‌ربط بود، پسوند را عوض کن، نه نام پایه را.', output: 'نام پایه + پسوند نهایی، با وضعیت آزاد یا گرفته در هر ۴ شبکه، یکسان در همهٔ شبکه‌ها.', trade: 'معمولاً آزادتر است و هویت یکدست می‌سازد، ولی پسوند بی‌ربط نام را مصنوعی می‌کند.', needs: 'نام پایه و یک پسوند مرتبط با موضوع.', pageNote: pageNote, steps: ['نام پایه را انتخاب کن', 'دو سه پسوند مرتبط با موضوع را امتحان کن', 'ترکیب نهایی را بلند بخوان و از نظر املا بررسی کن', 'ترکیب را موقع ثبت در هر ۴ شبکه بررسی کن', 'پسوند را در همهٔ شبکه‌ها یکسان نگه دار', 'نام و توضیح کوتاه پیج را یکجا ثبت کن'] },
   ];
   if (has('تیک‌تاک', 'tiktok', 'ریل', 'reel', 'ویدیو', 'video', 'کلیپ', 'فیلم')) return [
-    { name: 'فیلم‌برداری زنده با خودتان', desc: 'خودت جلوی دوربین یک صحنهٔ واقعی می‌گیری؛ بدون انیمیشن و بدون ویدیوی آماده.', pros: 'واقعی و قابل‌اعتماد است؛ مخاطب حس می‌کند واقعاً اتفاق افتاده.', cons: 'زمان، مکان و نور می‌خواهد؛ اگر صحنه خراب شود باید دوباره بگیری.', needs: 'گوشی، نور خوب، یک صحنهٔ ساده و یک جملهٔ اصلی.', pageNote: pageNote, steps: ['یک جملهٔ اصلی بنویس: این ویدیو دقیقاً چه چیزی را می‌خواهد بگوید؟', 'صحنه را با وسایل دم‌دست بچین و یک بار آزمایشی بگیر', 'نسخهٔ اصلی را در چند برداشت کوتاه بگیر', 'بهترین برداشت را انتخاب و اضافه‌ها را ببر', 'متن فارسی کوتاه روی ویدیو بگذار و صدای اصلی را نگه دار', 'پیش از انتشار، یک بار کامل با صدا ببین و بعد منتشر کن'] },
-    { name: 'تدوین ویدیوی آماده با متن فارسی', desc: 'از یک ویدیوی موجود شروع می‌کنی و آن را با متن و صدای فارسی برای پیج خودت بازسازی می‌کنی.', pros: 'سریع‌تر از فیلم‌برداری است و ساختار آماده دارد.', cons: 'اگر فقط کپی شود، تکراری به نظر می‌رسد؛ باید پیامش را عوض کنی.', needs: 'ویدیوی مرجع، متن فارسی کوتاه، ابزار تدوین ساده.', pageNote: pageNote, steps: ['پیام ویدیوی مرجع را در یک جمله بنویس', 'سناریو را با مثال و زبان خودت بازنویسی کن', 'نماهای لازم را انتخاب و به ترتیب بچین', 'متن فارسی را کوتاه و خوانا روی نماها بگذار', 'صدا را با پیام هماهنگ کن؛ آهنگ نباید پیام را بپوشاند', 'نسخهٔ نهایی را کامل ببین و بعد منتشر کن'] },
-    { name: 'ساخت انیمیشن یا تصویر متحرک', desc: 'صحنه با انیمیشن یا تصویر ساخته می‌شود، نه فیلم‌برداری واقعی.', pros: 'برای صحنه‌های غیرممکن در دنیای واقعی خوب است.', cons: 'زمان و ابزار بیشتری می‌خواهد و ممکن است مصنوعی به نظر برسد.', needs: 'ابزار ساخت تصویر یا انیمیشن، سناریوی تصویری، صدا.', pageNote: pageNote, steps: ['هر صحنه را در یک جمله توصیف کن', 'شخصیت و فضا را یکدست نگه دار', 'صحنه‌ها را به ترتیب بساز و کنار هم بگذار', 'صدا و متن فارسی را اضافه کن', 'حرکت‌ها را روان و طبیعی بررسی کن', 'نسخهٔ نهایی را کامل ببین و بعد منتشر کن'] },
+    { name: 'فیلم‌برداری زنده با خودتان', first: 'یک جملهٔ اصلی بنویس: این ویدیو دقیقاً چه چیزی را می‌خواهد بگوید؟ بعد صحنه را با وسایل دم‌دست بچین و یک برداشت آزمایشی بگیر.', where: 'گوشی خودت و نور پنجره یا نور اتاق؛ ابزار اضافه لازم نیست.', decide: 'اگر برداشت آزمایشی پیام را در ۳ ثانیهٔ اول رساند، همان صحنه را نگه دار؛ اگر نه، جملهٔ اصلی را کوتاه‌تر کن، نه اینکه صحنه را شلوغ‌تر کنی.', output: 'یک ویدیوی نهایی با متن فارسی کوتاه و صدای اصلی، که پیامش بدون توضیح اضافه فهمیده شود.', trade: 'واقعی و قابل‌اعتماد است، ولی زمان، مکان و نور می‌خواهد.', needs: 'گوشی، نور خوب، یک صحنهٔ ساده و یک جملهٔ اصلی.', pageNote: pageNote, steps: ['جملهٔ اصلی را در یک خط بنویس', 'صحنه را با وسایل دم‌دست بچین و یک برداشت آزمایشی بگیر', 'اگر پیام در ۳ ثانیهٔ اول نرسید، جمله را کوتاه کن و دوباره بگیر', 'نسخهٔ اصلی را در چند برداشت کوتاه بگیر', 'بهترین برداشت را انتخاب و اضافه‌ها را ببر', 'متن فارسی کوتاه روی ویدیو بگذار و صدای اصلی را نگه دار', 'نسخهٔ نهایی را یک بار کامل با صدا ببین و بعد منتشر کن'] },
+    { name: 'تدوین ویدیوی آماده با متن فارسی', first: 'پیام ویدیوی مرجع را در یک جمله بنویس، بعد سناریو را با مثال و زبان خودت بازنویسی کن.', where: 'ویدیوی مرجع + ابزار تدوین گوشی؛ متن فارسی را کوتاه و خوانا روی نماها بگذار.', decide: 'اگر نسخهٔ تو بدون دیدن مرجع هم قابل فهم بود، آمادهٔ انتشار است؛ اگر فقط با مرجع فهمیده شد، بازنویسی را بیشتر کن.', output: 'ویدیوی بازسازی‌شده با متن فارسی و صدای هماهنگ با پیام، نه کپی مرجع.', trade: 'سریع‌تر از فیلم‌برداری است، ولی اگر فقط کپی شود تکراری به نظر می‌رسد.', needs: 'ویدیوی مرجع، متن فارسی کوتاه، ابزار تدوین ساده.', pageNote: pageNote, steps: ['پیام ویدیوی مرجع را در یک جمله بنویس', 'سناریو را با مثال و زبان خودت بازنویسی کن', 'نماهای لازم را انتخاب و به ترتیب بچین', 'متن فارسی را کوتاه و خوانا روی نماها بگذار', 'صدا را با پیام هماهنگ کن؛ آهنگ نباید پیام را بپوشاند', 'نسخهٔ نهایی را کامل ببین و بعد منتشر کن'] },
+    { name: 'ساخت انیمیشن یا تصویر متحرک', first: 'هر صحنه را در یک جمله توصیف کن و شخصیت و فضا را در همهٔ صحنه‌ها یکدست نگه دار.', where: 'ابزار ساخت تصویر یا انیمیشن؛ سناریوی تصویری را قبل از ساخت، صحنه‌به‌صحنه بنویس.', decide: 'اگر در بازبینی، حرکت‌ها روان و طبیعی نبود، همان صحنه را دوباره بساز، نه اینکه روی کل ویدیو افکت بگذاری.', output: 'ویدیوی متحرک با شخصیت و فضای یکدست در همهٔ صحنه‌ها، با صدا و متن فارسی.', trade: 'برای صحنه‌های غیرممکن در دنیای واقعی خوب است، ولی زمان و ابزار بیشتری می‌خواهد.', needs: 'ابزار ساخت تصویر یا انیمیشن، سناریوی تصویری، صدا.', pageNote: pageNote, steps: ['هر صحنه را در یک جمله توصیف کن', 'شخصیت و فضا را در همهٔ صحنه‌ها یکدست نگه دار', 'صحنه‌ها را به ترتیب بساز و کنار هم بگذار', 'صدا و متن فارسی را اضافه کن', 'حرکت‌ها را روان و طبیعی بررسی کن', 'نسخهٔ نهایی را کامل ببین و بعد منتشر کن'] },
   ];
   if (has('شاهنامه', 'اساطیر', 'محتوا', 'قسمت', 'اپیزود', 'خط لوله', 'سری')) return [
-    { name: 'ساخت مرحله‌به‌مرحله از ایده تا انتشار', desc: 'محتوا از ایده شروع می‌شود و هر مرحله جداگانه کامل می‌شود.', pros: 'هر مرحله قابل بازبینی است و چیزی گم نمی‌شود.', cons: 'اگر در یک مرحله گیر کند، کل کار می‌ایستد.', needs: 'سناریو، زمان ساخت و بازبینی.', pageNote: pageNote, steps: ['ایده و پیام اصلی را در یک جمله بنویس', 'سناریو را کامل بنویس و یک نفر دیگر آن را بخواند', 'محتوا را بساز و نسخهٔ اول را نگه دار', 'تدوین را انجام بده و اضافه‌ها را ببر', 'بازبینی نهایی را با صدا و متن انجام بده', 'منتشر کن و بازخورد اول را یادداشت کن'] },
-    { name: 'ساخت سریع نسخهٔ اول، بعد پرداخت', desc: 'اول یک نسخهٔ قابل انتشار بساز، بعد همان را بهتر کن.', pros: 'زود به نتیجه می‌رسی و بازخورد واقعی می‌گیری.', cons: 'نسخهٔ اول ممکن است ناقص به نظر برسد.', needs: 'سناریوی کوتاه و ابزار ساخت سریع.', pageNote: pageNote, steps: ['ساده‌ترین نسخهٔ قابل انتشار را مشخص کن', 'همان نسخه را بساز و منتشر کن', 'بازخوردها را در سه نکته خلاصه کن', 'همان سه نکته را در نسخهٔ بعد اصلاح کن', 'نسخهٔ بهتر را جایگزین کن', 'نکته‌های یادگرفته‌شده را برای قسمت بعد بنویس'] },
-    { name: 'تقسیم کار با همکار', desc: 'کار به دو بخش تقسیم می‌شود و هر نفر یک بخش را جلو می‌برد.', pros: 'سریع‌تر پیش می‌رود و هر بخش یک صاحب دارد.', cons: 'اگر تقسیم روشن نباشد، کارها روی هم می‌افتند.', needs: 'تقسیم روشن وظایف و زمان تحویل هر بخش.', pageNote: pageNote, steps: ['کار را به دو بخش مستقل تقسیم کن', 'برای هر بخش یک صاحب و یک مهلت مشخص کن', 'بخش‌ها را جداگانه بسازید', 'دو بخش را کنار هم بگذار و ناهماهنگی‌ها را بگیر', 'بازبینی نهایی را با هم انجام بدهید', 'منتشر کن و نتیجه را هر دو ببینید'] },
+    { name: 'ساخت مرحله‌به‌مرحله از ایده تا انتشار', first: 'ایده و پیام اصلی را در یک جمله بنویس، سناریو را کامل بنویس و بده یک نفر دیگر آن را بخواند.', where: 'سناریو + بازبینی نفر دوم، قبل از اینکه ساخت شروع شود.', decide: 'اگر خوانندهٔ دوم پیام را درست فهمید، برو سراغ ساخت؛ اگر نه، سناریو را اصلاح کن، نه اینکه ساخت را شروع کنی و وسطش برگردی.', output: 'محتوای منتشرشده + یادداشت بازخورد اول، برای قسمت بعد.', trade: 'هر مرحله قابل بازبینی است و چیزی گم نمی‌شود، ولی اگر در یک مرحله گیر کند کل کار می‌ایستد.', needs: 'سناریو، زمان ساخت و بازبینی.', pageNote: pageNote, steps: ['ایده و پیام اصلی را در یک جمله بنویس', 'سناریو را کامل بنویس و بده یک نفر دیگر آن را بخواند', 'اگر خوانندهٔ دوم پیام را نفهمید، سناریو را اصلاح کن', 'محتوا را بساز و نسخهٔ اول را نگه دار', 'تدوین را انجام بده و اضافه‌ها را ببر', 'بازبینی نهایی را با صدا و متن انجام بده', 'منتشر کن و بازخورد اول را یادداشت کن'] },
+    { name: 'ساخت سریع نسخهٔ اول، بعد پرداخت', first: 'ساده‌ترین نسخهٔ قابل انتشار را مشخص کن و همان را بساز و منتشر کن؛ پرداخت برای بعد است.', where: 'سناریوی کوتاه و ابزار ساخت سریع؛ بازخورد واقعی بعد از انتشار می‌آید، نه قبلش.', decide: 'بازخوردها را در ۳ نکته خلاصه کن و فقط همان ۳ نکته را در نسخهٔ بعد اصلاح کن؛ بیشتر از ۳ نکته، نسخهٔ بعد را دوباره عقب می‌اندازد.', output: 'نسخهٔ اول منتشرشده + ۳ نکتهٔ اصلاح‌شده در نسخهٔ دوم.', trade: 'زود به نتیجه می‌رسی و بازخورد واقعی می‌گیری، ولی نسخهٔ اول ممکن است ناقص به نظر برسد.', needs: 'سناریوی کوتاه و ابزار ساخت سریع.', pageNote: pageNote, steps: ['ساده‌ترین نسخهٔ قابل انتشار را مشخص کن', 'همان نسخه را بساز و منتشر کن', 'بازخوردها را در سه نکته خلاصه کن', 'همان سه نکته را در نسخهٔ بعد اصلاح کن', 'نسخهٔ بهتر را جایگزین کن', 'نکته‌های یادگرفته‌شده را برای قسمت بعد بنویس'] },
+    { name: 'تقسیم کار با همکار', first: 'کار را به دو بخش مستقل تقسیم کن و برای هر بخش یک صاحب و یک مهلت مشخص کن.', where: 'تقسیم را جوری بنویس که هر بخش جداگانه قابل تحویل باشد؛ اگر بخشی به بخش دیگر وابسته بود، تقسیم را عوض کن.', decide: 'اگر بخشی بدون بخش دیگر قابل تحویل نبود، تقسیم اشتباه است و باید عوض شود؛ وگرنه هر نفر بخش خودش را جلو می‌برد.', output: 'دو بخش تحویل‌شده + نسخهٔ نهایی یکپارچه که هر دو بازبینی‌اش کرده‌اند.', trade: 'سریع‌تر پیش می‌رود و هر بخش یک صاحب دارد، ولی اگر تقسیم روشن نباشد کارها روی هم می‌افتند.', needs: 'تقسیم روشن وظایف و زمان تحویل هر بخش.', pageNote: pageNote, steps: ['کار را به دو بخش مستقل تقسیم کن', 'برای هر بخش یک صاحب و یک مهلت مشخص کن', 'بخش‌ها را جداگانه بسازید', 'دو بخش را کنار هم بگذار و ناهماهنگی‌ها را بگیر', 'بازبینی نهایی را با هم انجام بدهید', 'منتشر کن و نتیجه را هر دو ببینید'] },
   ];
   return [
-    { name: 'سریع‌ترین مسیر', desc: 'ساده‌ترین نسخه‌ای که کار را انجام می‌دهد، بدون جزئیات اضافه.', pros: 'زود تمام می‌شود.', cons: 'ممکن است بعداً نیاز به بازسازی داشته باشد.', needs: 'فقط ابزار و زمان لازم برای نسخهٔ ساده.', pageNote: pageNote, steps: ['نتیجهٔ قابل قبول را در یک جمله مشخص کن', 'ساده‌ترین راه رسیدن به آن را انتخاب کن', 'همان را بساز و تحویل بده', 'اگر جایی خراب شد، همان‌جا را اصلاح کن', 'نتیجه را یک بار کامل بررسی کن'] },
-    { name: 'کامل‌ترین مسیر', desc: 'کار با همهٔ جزئیات و بازبینی‌ها انجام می‌شود.', pros: 'نتیجهٔ نهایی تمیز و قابل دفاع است.', cons: 'زمان بیشتری می‌برد.', needs: 'زمان کافی، بازبینی و فهرست جزئیات.', pageNote: pageNote, steps: ['همهٔ جزئیات لازم را فهرست کن', 'هر جزئیات را جداگانه کامل کن', 'نسخهٔ کامل را یک بار از اول تا آخر بررسی کن', 'نقص‌ها را اصلاح کن', 'نتیجهٔ نهایی را تحویل بده'] },
-    { name: 'با همکاری', desc: 'کار بین دو نفر تقسیم می‌شود تا هر بخش یک صاحب داشته باشد.', pros: 'سریع‌تر و با دید دوم انجام می‌شود.', cons: 'بدون تقسیم روشن، کارها قاطی می‌شوند.', needs: 'تقسیم روشن و زمان تحویل.', pageNote: pageNote, steps: ['کار را به بخش‌های مستقل تقسیم کن', 'برای هر بخش یک صاحب مشخص کن', 'بخش‌ها را جداگانه انجام بدهید', 'بخش‌ها را کنار هم بگذار و ناهماهنگی‌ها را بگیر', 'نتیجهٔ نهایی را با هم بررسی و تحویل بدهید'] },
+    { name: 'سریع‌ترین مسیر', first: 'نتیجهٔ قابل قبول را در یک جمله مشخص کن و ساده‌ترین راه رسیدن به آن را انتخاب کن.', where: 'فقط ابزار و زمان لازم برای نسخهٔ ساده؛ جزئیات اضافه را برای بعد نگه دار.', decide: 'اگر نسخهٔ ساده نتیجه را داد، همان را تحویل بده؛ اگر نه، فقط همان جای خراب را اصلاح کن، نه اینکه از اول شروع کنی.', output: 'نسخهٔ سادهٔ تحویل‌شده که نتیجهٔ مشخص‌شده را می‌دهد.', trade: 'زود تمام می‌شود، ولی ممکن است بعداً نیاز به بازسازی داشته باشد.', needs: 'فقط ابزار و زمان لازم برای نسخهٔ ساده.', pageNote: pageNote, steps: ['نتیجهٔ قابل قبول را در یک جمله مشخص کن', 'ساده‌ترین راه رسیدن به آن را انتخاب کن', 'همان را بساز و تحویل بده', 'اگر جایی خراب شد، همان‌جا را اصلاح کن', 'نتیجه را یک بار کامل بررسی کن'] },
+    { name: 'کامل‌ترین مسیر', first: 'همهٔ جزئیات لازم را فهرست کن و هر جزئیات را جداگانه کامل کن.', where: 'فهرست جزئیات + بازبینی نهایی از اول تا آخر، قبل از تحویل.', decide: 'نسخهٔ کامل را یک بار از اول تا آخر بررسی کن و فقط نقص‌های دیده‌شده را اصلاح کن؛ اضافه‌کردن جزئیات تازه در بازبینی، تحویل را عقب می‌اندازد.', output: 'نتیجهٔ نهایی تمیز و قابل دفاع، با همهٔ جزئیات فهرست‌شده کامل‌شده.', trade: 'نتیجهٔ نهایی تمیز و قابل دفاع است، ولی زمان بیشتری می‌برد.', needs: 'زمان کافی، بازبینی و فهرست جزئیات.', pageNote: pageNote, steps: ['همهٔ جزئیات لازم را فهرست کن', 'هر جزئیات را جداگانه کامل کن', 'نسخهٔ کامل را یک بار از اول تا آخر بررسی کن', 'نقص‌ها را اصلاح کن', 'نتیجهٔ نهایی را تحویل بده'] },
+    { name: 'با همکاری', first: 'کار را به بخش‌های مستقل تقسیم کن و برای هر بخش یک صاحب مشخص کن.', where: 'تقسیم روشن + زمان تحویل هر بخش؛ هر بخش باید جداگانه قابل تحویل باشد.', decide: 'اگر بخشی بدون بخش دیگر قابل تحویل نبود، تقسیم را عوض کن؛ وگرنه بخش‌ها را جداگانه انجام بدهید و آخر کنار هم بگذارید.', output: 'بخش‌های تحویل‌شده + نتیجهٔ نهایی که هر دو بررسی‌اش کرده‌اند.', trade: 'سریع‌تر و با دید دوم انجام می‌شود، ولی بدون تقسیم روشن کارها قاطی می‌شوند.', needs: 'تقسیم روشن و زمان تحویل.', pageNote: pageNote, steps: ['کار را به بخش‌های مستقل تقسیم کن', 'برای هر بخش یک صاحب مشخص کن', 'بخش‌ها را جداگانه انجام بدهید', 'بخش‌ها را کنار هم بگذار و ناهماهنگی‌ها را بگیر', 'نتیجهٔ نهایی را با هم بررسی و تحویل بدهید'] },
   ];
+}
+function methodCardHtml(m, i, chooseFn){
+  return '<div class="method-card"><b>' + esc(m.name) + '</b>' +
+    '<div style="line-height:1.8;margin-top:6px">▶️ <b>اول:</b> ' + esc(m.first) + '</div>' +
+    '<div style="line-height:1.8;margin-top:4px">📍 <b>کجا / با چه:</b> ' + esc(m.where) + '</div>' +
+    '<div style="line-height:1.8;margin-top:4px">✅ <b>معیار انتخاب:</b> ' + esc(m.decide) + '</div>' +
+    '<div style="line-height:1.8;margin-top:4px">🎯 <b>خروجی نهایی:</b> ' + esc(m.output) + '</div>' +
+    '<div class="meta" style="margin-top:6px">' + esc(m.trade) + '</div>' +
+    '<div class="meta">' + esc(m.pageNote) + '</div>' +
+    '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="' + chooseFn + '(' + i + ')">انتخاب این روش</button></div>';
 }
 function methodGuideHtml(){
   if (!TS) return '';
-  if (!TS.methodGuide) return '<p class="meta">برای دیدن ۳ روش، دکمهٔ «تحلیل روش‌های انجام» را بزن. این روش‌ها پیشنهاد داخل پنل‌اند، نه تحلیل زندهٔ دستیار.</p>';
-  return TS.methodGuide.map((m, i)=>{
-    return '<div class="method-card"><b>' + esc(m.name) + '</b>' +
-      '<div style="line-height:1.8;margin-top:4px">' + esc(m.desc) + '</div>' +
-      '<div class="meta" style="margin-top:6px">👍 ' + esc(m.pros) + ' &nbsp;·&nbsp; 👎 ' + esc(m.cons) + '</div>' +
-      '<div class="meta">نیاز دارد: ' + esc(m.needs) + '</div>' +
-      '<div class="meta">' + esc(m.pageNote) + '</div>' +
-      '<button class="btn-teal btn-sm" style="margin-top:8px" onclick="chooseMethod(' + i + ')">انتخاب این روش</button></div>';
-  }).join('');
+  if (!TS.methodGuide) return '<p class="meta">برای دیدن ۳ روش، دکمهٔ «روش‌های انجام» را در برگهٔ کار باز کن. این روش‌ها پیشنهاد داخل پنل‌اند، نه تحلیل زندهٔ دستیار.</p>';
+  return TS.methodGuide.map((m, i)=>methodCardHtml(m, i, 'chooseMethod')).join('');
+}
+function viewMethodGuideHtml(){
+  if (!TV || !TV.methodGuide) return '';
+  return TV.methodGuide.map((m, i)=>methodCardHtml(m, i, 'chooseViewMethod')).join('');
 }
 function showMethodGuide(){ if (!TS) return; TS.methodGuide = methodLibraryFor(TS); TS.chosenMethod = null; renderTaskSheet(); }
 function chooseMethod(i){
@@ -1582,7 +1644,59 @@ function chooseMethod(i){
 }
 
 // ---------- Task sheet (bottom sheet, in-place editing via updateTodo) ----------
-function openTaskSheet(id){
+// ---------- Task view sheet (read-only detail; the ONLY way into edit
+// is the explicit edit button inside this sheet). All existing call
+// sites that used to open the edit form now open this view instead.
+function openTaskView(id, guideOpen){
+  const t = S.todos.find(x=>x.id===id); if (!t) return;
+  TV = { id: t.id, guideOpen: !!guideOpen, methodGuide: null };
+  renderTaskView();
+}
+function renderTaskView(){
+  if (!TV) return;
+  const t = S.todos.find(x=>x.id===TV.id); if (!t) { TV = null; closeSheet(); return; }
+  const steps = stepsFor(t.id);
+  const det = taskDetail(t);
+  const dateLabel = t.deadline ? fmtStoredDate(t.deadline) : 'بدون مهلت';
+  const stepsHtml = steps.length
+    ? '<div class="sub-list">' + steps.map(x=>'<div class="sub-step'+(x.done?' done':'')+'"><input type="checkbox" '+(x.done?'checked':'')+' onchange="toggleViewStep('+t.id+','+x.id+',this.checked)"><div style="flex:1;min-width:0"><div class="sub-title">'+esc(x.text)+'</div></div></div>').join('') + '</div>'
+    : '<p class="meta">هنوز گامی نیست — «روش‌های انجام» را پایین باز کن و یک روش را انتخاب کن تا گام‌هایش ساخته شوند.</p>';
+  const guideBtn = '<button class="btn-ghost btn-sm" style="margin-top:8px" onclick="TV.guideOpen=!TV.guideOpen;renderTaskView()">روش‌های انجام '+(TV.guideOpen?'▴':'▾')+'</button>';
+  const guideBox = TV.guideOpen
+    ? '<div style="margin-top:8px"><p class="meta">روش‌های پیشنهادی داخل پنل — قابل ویرایش توسط شما؛ این بخش تحلیل زندهٔ دستیار نیست.</p>' + (TV.methodGuide ? viewMethodGuideHtml() : '<button class="btn-teal btn-sm" onclick="showViewMethodGuide()">دیدن ۳ روش</button>') + '</div>'
+    : '';
+  openSheet(
+    '<h2 style="margin-top:0">'+esc(t.title)+'</h2>' +
+    '<div class="meta" style="margin-bottom:12px">شناسه #'+t.id+(t.created_at ? ' · ساخته‌شده ' + fmtCreated(t.created_at) : '')+' · '+esc(t.category || 'نامشخص')+' · '+esc(ASSIGNEE[t.assignee] || t.assignee)+' · '+esc(STATUS[t.status])+' · مهلت: '+dateLabel+'</div>' +
+    (det ? '<div style="line-height:1.9">'+guideListHtml(det)+'</div>' : '<p class="meta">توضیحی نوشته نشده.</p>') +
+    '<h2>گام‌ها</h2>' + stepsHtml +
+    '<h2 style="margin-top:16px">راهنمای انجام</h2>' + guideBtn + guideBox +
+    '<div class="row" style="margin-top:16px"><button class="btn-teal" style="flex:1" onclick="openTaskEdit('+t.id+')">✏️ ویرایش</button>' +
+    '<button class="btn-ghost" style="flex:1" onclick="updateTodo('+t.id+',NEXT_STATUS[t.status]);closeSheet()">'+NEXT_LABEL[t.status]+'</button>' +
+    '<button class="btn-ghost" style="flex:1" onclick="TV=null;closeSheet()">بستن</button></div>'
+  );
+}
+function showViewMethodGuide(){
+  if (!TV) return;
+  const t = S.todos.find(x=>x.id===TV.id); if (!t) return;
+  TV.methodGuide = methodLibraryFor({ title: t.title, category: t.category, detail: taskDetail(t) });
+  renderTaskView();
+}
+async function chooseViewMethod(i){
+  if (!TV || !TV.methodGuide || !TV.methodGuide[i]) return;
+  const m = TV.methodGuide[i];
+  try {
+    for (const st of m.steps) { await call('addStep', { todo_id: TV.id, title: st }); }
+    const id = TV.id; await refresh(); openTaskView(id, false);
+  } catch(e){ showErr(e.message); }
+}
+async function toggleViewStep(todoId, stepId, done){
+  const keepGuide = !!(TV && TV.guideOpen);
+  try { await call('updateStep', { id: stepId, done: !!done }); await refresh(); openTaskView(todoId, keepGuide); }
+  catch(e){ showErr(e.message); }
+}
+function openTaskSheet(id){ openTaskView(id); }
+function openTaskEdit(id){
   const t = S.todos.find(x=>x.id===id); if (!t) return;
   const steps = stepsFor(id);
   const detailNote = taskDetailNote(t);
@@ -1652,12 +1766,11 @@ function breakIntoSteps(){
   if (TS.steps.length) return;
   // Drafts only: each accepted step is created server-side via addStep
   // when the sheet is saved (see saveTaskSheet), not on generation.
-  TS.steps = [
-    {id: null, text:'طرح کلی', done:false},
-    {id: null, text:'پیش‌نویس', done:false},
-    {id: null, text:'بازبینی', done:false},
-    {id: null, text:'آماده‌سازی انتشار', done:false},
-  ];
+  // The steps come from the task's own method library (or the chosen
+  // method), never from generic filler like 'طرح کلی' / 'پیش‌نویس'.
+  const lib = methodLibraryFor(TS);
+  const m = (TS.chosenMethod && lib.find(x=>x.name===TS.chosenMethod)) || lib[0];
+  TS.steps = (m ? m.steps : []).map(x=>({id: null, text: x, done: false}));
   renderTaskSheet();
 }
 async function saveTaskSheet(){
@@ -1971,11 +2084,21 @@ function refreshChannels(){ try { localStorage.removeItem('panelChannelsV1'); } 
 let chanEditOpen = {};
 function toggleChanEdit(cat){ chanEditOpen[cat] = !chanEditOpen[cat]; renderChannels(); }
 function chanBadge(net){
-  if (net === 'اینستاگرام') return '📷';
-  if (net === 'یوتیوب') return '▶️';
-  if (net === 'آپارات') return '🎬';
-  if (net === 'تیک‌تاک') return '🎵';
-  return '🔗';
+  const ICONS = {
+    'اینستاگرام': ['linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)', 'M7.03.084c-1.277.06-2.149.264-2.91.563a5.9 5.9 0 0 0-2.124 1.388a5.9 5.9 0 0 0-1.38 2.127C.321 4.926.12 5.8.064 7.076s-.069 1.688-.063 4.947s.021 3.667.083 4.947c.061 1.277.264 2.149.563 2.911c.308.789.72 1.457 1.388 2.123a5.9 5.9 0 0 0 2.129 1.38c.763.295 1.636.496 2.913.552c1.278.056 1.689.069 4.947.063s3.668-.021 4.947-.082c1.28-.06 2.147-.265 2.91-.563a5.9 5.9 0 0 0 2.123-1.388a5.9 5.9 0 0 0 1.38-2.129c.295-.763.496-1.636.551-2.912c.056-1.28.07-1.69.063-4.948c-.006-3.258-.02-3.667-.081-4.947c-.06-1.28-.264-2.148-.564-2.911a5.9 5.9 0 0 0-1.387-2.123a5.9 5.9 0 0 0-2.128-1.38c-.764-.294-1.636-.496-2.914-.55C15.647.009 15.236-.006 11.977 0S8.31.021 7.03.084m.14 21.693c-1.17-.05-1.805-.245-2.228-.408a3.7 3.7 0 0 1-1.382-.895a3.7 3.7 0 0 1-.9-1.378c-.165-.423-.363-1.058-.417-2.228c-.06-1.264-.072-1.644-.08-4.848c-.006-3.204.006-3.583.061-4.848c.05-1.169.246-1.805.408-2.228c.216-.561.477-.96.895-1.382a3.7 3.7 0 0 1 1.379-.9c.423-.165 1.057-.361 2.227-.417c1.265-.06 1.644-.072 4.848-.08c3.203-.006 3.583.006 4.85.062c1.168.05 1.804.244 2.227.408c.56.216.96.475 1.382.895s.681.817.9 1.378c.165.422.362 1.056.417 2.227c.06 1.265.074 1.645.08 4.848c.005 3.203-.006 3.583-.061 4.848c-.051 1.17-.245 1.805-.408 2.23c-.216.56-.477.96-.896 1.38a3.7 3.7 0 0 1-1.378.9c-.422.165-1.058.362-2.226.418c-1.266.06-1.645.072-4.85.079s-3.582-.006-4.848-.06m9.783-16.192a1.44 1.44 0 1 0 1.437-1.442a1.44 1.44 0 0 0-1.437 1.442M5.839 12.012a6.161 6.161 0 1 0 12.323-.024a6.162 6.162 0 0 0-12.323.024M8 12.008A4 4 0 1 1 12.008 16A4 4 0 0 1 8 12.008'],
+    'یوتیوب': ['#FF0000', 'M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z'],
+    'آپارات': ['#ED145B', 'M12.001 1.594c-9.27-.003-13.913 11.203-7.36 17.758a10.403 10.403 0 0 0 17.76-7.355c0-5.744-4.655-10.401-10.4-10.403M6.11 6.783c.501-2.598 3.893-3.294 5.376-1.103s-.422 5.082-3.02 4.582A2.97 2.97 0 0 1 6.11 6.783m4.322 8.988c-.504 2.597-3.896 3.288-5.377 1.096s.427-5.08 3.025-4.579a2.97 2.97 0 0 1 2.352 3.483m1.26-2.405c-1.152-.223-1.462-1.727-.491-2.387c.97-.66 2.256.18 2.04 1.334a1.32 1.32 0 0 1-1.548 1.053m6.198 3.838c-.501 2.598-3.893 3.293-5.376 1.103s.421-5.082 3.02-4.583a2.97 2.97 0 0 1 2.356 3.48m-1.967-5.502c-2.598-.501-3.293-3.896-1.102-5.38s5.081.422 4.582 3.02a2.97 2.97 0 0 1-3.48 2.36M13.59 23.264l2.264.61a3.715 3.715 0 0 0 4.543-2.636l.64-2.402a11.38 11.38 0 0 1-7.448 4.428m7.643-19.665l-2.363-.629a11.38 11.38 0 0 1 4.354 7.62l.65-2.459A3.715 3.715 0 0 0 21.231 3.6M.672 13.809l-.541 2.04a3.715 3.715 0 0 0 2.636 4.543l2.107.562a11.38 11.38 0 0 1-4.203-7.145M10.357.702L8.15.126a3.715 3.715 0 0 0-4.547 2.637l-.551 2.082A11.38 11.38 0 0 1 10.358.702'],
+    'تیک‌تاک': ['#000000', 'M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z'],
+  };
+  const e = ICONS[net];
+  if (!e) return '<span class="chan-badge" style="background:var(--ghost)"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="#fff" stroke-width="2"/></svg></span>';
+  return '<span class="chan-badge" style="background:'+e[0]+'"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="#fff" d="'+e[1]+'"/></svg></span>';
+}
+function chanStatusParts(status){
+  const st = String(status || '');
+  const m = st.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  if (m) return { main: m[1].trim(), note: m[2].trim() };
+  return { main: st, note: '' };
 }
 function chanDot(status){
   const st = String(status || '');
@@ -1993,7 +2116,9 @@ function renderChannels(){
     const editing = !!chanEditOpen[cat];
     const rows = (data[cat] && data[cat].length) ? data[cat].map((ch, i)=>{
       const arrow = ch.url ? '<a href="'+esc(ch.url)+'" target="_blank" rel="noopener" aria-label="باز کردن لینک" style="text-decoration:none;font-size:1.2rem;flex:none">↗</a>' : '<span class="meta" style="flex:none">بدون لینک</span>';
-      const viewRow = '<div class="chan-row2"><span class="chan-badge">'+chanBadge(ch.net)+'</span><div style="flex:1;min-width:0"><div>'+esc(ch.net)+'</div><div class="chan-handle" dir="ltr" style="text-align:left">'+esc(ch.handle || '— بدون هندل')+'</div></div><span class="chan-dot" style="background:'+chanDot(ch.status)+'"></span><span class="meta" style="white-space:nowrap">'+esc(ch.status)+'</span>'+arrow+'</div>';
+            const sp = chanStatusParts(ch.status);
+      const noteLine = sp.note ? '<div class="meta" style="margin-top:2px;line-height:1.7;overflow-wrap:anywhere">'+esc(sp.note)+'</div>' : '';
+      const viewRow = '<div class="chan-row2" style="align-items:flex-start"><span style="margin-top:2px;flex:none">'+chanBadge(ch.net)+'</span><div style="flex:1;min-width:0"><div>'+esc(ch.net)+'</div><div class="chan-handle" dir="ltr" style="text-align:left">'+esc(ch.handle || '— بدون هندل')+'</div><div style="display:flex;align-items:center;gap:6px;margin-top:4px"><span class="chan-dot" style="background:'+chanDot(ch.status)+'"></span><span class="meta" style="white-space:nowrap">'+esc(sp.main)+'</span></div>'+noteLine+'</div><span style="margin-top:6px;flex:none">'+arrow+'</span></div>';
       const editRow = editing ? '<div class="chan-row"><b style="min-width:86px">'+esc(ch.net)+'</b><input value="'+esc(ch.handle)+'" placeholder="هندل…" onchange="chanInput(\''+cat+'\','+i+',this.value)" style="flex:1"></div>' : '';
       return viewRow + editRow;
     }).join('') : '<div class="meta">هنوز کانالی برای این دسته ثبت نشده.</div>';
